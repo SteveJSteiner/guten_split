@@ -37,3 +37,7 @@ mmap = ["memmap2"]
 [[bench]]
 name = "reader_bench"
 harness = false
+
+[[bench]]
+name = "sentence_detector_bench"
+harness = false

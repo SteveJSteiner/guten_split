@@ -49,7 +49,7 @@ impl Default for SentenceBoundaryRules {
 /// Compiled FST for fast sentence boundary detection
 pub struct SentenceDetectorFST {
     /// Compiled FST set for pattern matching
-    fst_set: Arc<Set<Vec<u8>>>,
+    _fst_set: Arc<Set<Vec<u8>>>, 
     /// Rules used to compile this FST
     rules: SentenceBoundaryRules,
 }
@@ -67,23 +67,23 @@ impl SentenceDetectorFST {
         for &end_punct in &rules.end_punctuation {
             for &boundary_punct in &rules.boundary_punctuation {
                 // Pattern: end_punct + boundary_punct + space + capital
-                let pattern = format!("{}{}\\s[A-Z]", end_punct, boundary_punct);
+                let pattern = format!("{end_punct}{boundary_punct}\\s[A-Z]");
                 patterns.push(pattern.into_bytes());
             }
             
             // Pattern: end_punct + space + capital
-            let pattern = format!("{}\\s[A-Z]", end_punct);
+            let pattern = format!("{end_punct}\\s[A-Z]");
             patterns.push(pattern.into_bytes());
             
             // Pattern: end_punct + space + opening quote
             for &quote in &rules.opening_quotes {
-                let pattern = format!("{}\\s{}", end_punct, quote);
+                let pattern = format!("{end_punct}\\s{quote}");
                 patterns.push(pattern.into_bytes());
             }
             
             // Pattern: end_punct + space + opening parenthetical
             for &paren in &rules.opening_parentheticals {
-                let pattern = format!("{}\\s{}", end_punct, paren);
+                let pattern = format!("{end_punct}\\s{paren}");
                 patterns.push(pattern.into_bytes());
             }
         }
@@ -108,7 +108,7 @@ impl SentenceDetectorFST {
         info!("Successfully compiled FST with {} states", fst_set.len());
         
         Ok(Self {
-            fst_set: Arc::new(fst_set),
+            _fst_set: Arc::new(fst_set),
             rules,
         })
     }
