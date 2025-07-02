@@ -3,6 +3,8 @@ use clap::Parser;
 use std::path::PathBuf;
 use tracing::info;
 
+mod discovery;
+
 #[derive(Parser, Debug)]
 #[command(name = "rs-sft-sentences")]
 #[command(about = "High-throughput sentence extractor for Project Gutenberg texts")]
@@ -55,7 +57,40 @@ async fn main() -> Result<()> {
     }
     
     info!("Project setup validation completed successfully");
-    println!("rs-sft-sentences v{} - Project setup complete", env!("CARGO_PKG_VERSION"));
+    
+    // Discover and validate files
+    let discovery_config = discovery::DiscoveryConfig {
+        fail_fast: args.fail_fast,
+    };
+    
+    info!("Starting file discovery in: {}", args.root_dir.display());
+    let discovered_files = discovery::collect_discovered_files(&args.root_dir, discovery_config).await?;
+    
+    let valid_files: Vec<_> = discovered_files.iter()
+        .filter(|f| f.is_valid_utf8 && f.error.is_none())
+        .collect();
+    
+    let invalid_files: Vec<_> = discovered_files.iter()
+        .filter(|f| !f.is_valid_utf8 || f.error.is_some())
+        .collect();
+    
+    info!("File discovery completed: {} total files found", discovered_files.len());
+    info!("Valid UTF-8 files: {}", valid_files.len());
+    
+    if !invalid_files.is_empty() {
+        info!("Files with issues: {}", invalid_files.len());
+        for file in &invalid_files {
+            if let Some(ref error) = file.error {
+                info!("Issue with {}: {}", file.path.display(), error);
+            } else if !file.is_valid_utf8 {
+                info!("UTF-8 validation failed: {}", file.path.display());
+            }
+        }
+    }
+    
+    println!("rs-sft-sentences v{} - File discovery complete", env!("CARGO_PKG_VERSION"));
+    println!("Found {} files matching pattern *-0.txt", discovered_files.len());
+    println!("Valid files: {}, Files with issues: {}", valid_files.len(), invalid_files.len());
     
     Ok(())
 }
