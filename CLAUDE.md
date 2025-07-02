@@ -47,7 +47,55 @@ Each file lives under /tasks/ and follows this template:
 * **References:**
   - PRD sections, related tasks, docs links
 
+## Pre-commit checklist:
+- [ ] All deliverables implemented
+- [ ] Tests passing (`cargo test`)
+- [ ] Claims validated (`cargo test -- --nocapture | grep -E "(concurrent|parallel|faster|optimized)"` + manual verification)
+- [ ] Documentation updated if needed
+- [ ] Clippy warnings addressed
+
 (Claude auto‑fills the template when generating the task.)
+
+⸻
+
+3.1 Implementation Claim Validation
+
+Before committing, validate that code matches any claims made in comments or documentation:
+	•	**Concurrency claims** — If code comments mention "concurrent", "parallel", or "batch processing", ensure implementation actually uses concurrent primitives (join_all, spawn, channels) rather than sequential loops.
+	•	**Performance claims** — If comments mention speed improvements, throughput gains, or syscall reduction, ensure benchmarks or measurements support the claim.
+	•	**Async claims** — If functions are marked async and claim non-blocking behavior, verify they don't block on synchronous operations.
+
+Use `rg` to spot-check claims before commit:
+```bash
+# Check for concurrency claims near sequential code
+rg -A5 -B5 "concurrent|parallel" src/ | rg "for.*in"
+
+# Check for performance claims without validation
+rg "faster|optimized|throughput|reduces.*syscalls" src/
+```
+
+⸻
+
+3.2 Context Management & Work Boundaries
+
+**Prime Directive: When in doubt, ASK.** The UI shows users when context is low.
+
+**Context Management Guidelines:**
+- **Early in conversation**: Can handle process-adjacent work (new tests, minor docs updates)
+- **Mid-conversation**: Focus on core feature work; ask before process improvements
+- **Complex/long conversation**: Ask before any process-adjacent work
+- **Uncertain about context usage**: Ask user to check UI and advise on next steps
+
+**Feature vs Process Improvement Boundaries:**
+- **Feature work**: Implement features WITH all required process steps (tests, docs, validation, benchmarks)
+- **Process improvement work**: Change the development process itself (testing strategy, workflow updates, tooling creation)
+- **Rule**: Don't mix process improvements with feature development, but features must complete all process requirements
+
+**Work Chunking Strategy:**
+1. **Complete features atomically** — Feature + all its required tests/docs/validation in one session
+2. **Separate process improvements** — Handle workflow/strategy changes in dedicated sessions  
+3. **Ask before context-heavy additions** — When adding tests/docs would push context > 60%, ask first
+4. **Summarize at boundaries** — Preserve state when approaching context limits
 
 ⸻
 
@@ -62,6 +110,8 @@ Progress	indicatif multi‑progress bars	Ergonomic, cross‑platform; keeps user
 Lock file	Commit Cargo.lock	Reproducible builds and tutorial consistency.
 Docs folder	/docs/ for high‑level explainers	Separates narrative docs from code comments.
 Tests	cargo test in CI	Ensures every task is validated.
+Testing strategy	See docs/testing-strategy.md	10-second budget optimization, I/O test coverage, context management.
+Process improvements	See docs/process-improvement-workflow.md	Workflow for changing development process itself.
 
 Inline WHY comments use this style:
 
