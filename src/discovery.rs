@@ -233,6 +233,22 @@ pub async fn collect_discovered_files(
     Ok(files)
 }
 
+/// Convenience function to find all valid Gutenberg files (only paths, not validation details)
+/// WHY: Simplifies common use case for integration tests and external callers
+pub async fn find_gutenberg_files<P: AsRef<Path>>(root_dir: P) -> Result<Vec<PathBuf>> {
+    let config = DiscoveryConfig::default();
+    let validations = collect_discovered_files(root_dir, config).await?;
+    
+    // Return only valid files
+    let valid_files: Vec<PathBuf> = validations
+        .into_iter()
+        .filter(|v| v.is_valid_utf8 && v.error.is_none())
+        .map(|v| v.path)
+        .collect();
+    
+    Ok(valid_files)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,14 +3,28 @@
 ## Active Features
 
 ### High Priority
-- **Feature**: Integration test framework implementation
-- **Type**: Process-Feature (builds development infrastructure)
-- **Effort**: Medium
-- **Prerequisites**: Testing strategy document (completed)
-- **Context**: Implements the integration testing strategy defined in docs/testing-strategy.md
-- **Acceptance**: Complete discovery→reader→sentence_detector pipeline tests within 2min budget
+- **Feature**: Complete sentence boundary rules implementation
+- **Type**: Core Feature
+- **Effort**: Large
+- **Prerequisites**: Integration test framework (completed)
+- **Context**: Implement complete rules that handle abbreviations (Dr., Mr., U.S.A.) correctly vs current simple rules
+- **Acceptance**: All punctuation complete rules tests pass, abbreviations not split incorrectly
 
 ### Medium Priority
+- **Feature**: Complex multi-line text integration tests
+- **Type**: Process-Feature (test coverage)
+- **Effort**: Small
+- **Prerequisites**: Integration test framework (completed)
+- **Context**: Re-enable test_pipeline_complex_text with correct span calculations for line break normalization
+- **Acceptance**: Complex text scenarios with line breaks validate correctly
+
+- **Feature**: Performance integration tests with large datasets
+- **Type**: Process-Feature (performance validation)
+- **Effort**: Small
+- **Prerequisites**: Integration test framework (completed)
+- **Context**: Re-enable test_pipeline_performance with correct column position calculations
+- **Acceptance**: 500+ sentence processing validates within performance budget
+
 - **Feature**: Sentence detection throughput benchmarks
 - **Type**: Process-Feature (performance validation)
 - **Effort**: Small
@@ -21,7 +35,7 @@
 - **Feature**: Memory usage profiling integration
 - **Type**: Process-Feature (performance validation)  
 - **Effort**: Medium
-- **Prerequisites**: Integration test framework
+- **Prerequisites**: Integration test framework (completed)
 - **Context**: Validate memory claims and detect leaks during large file processing
 - **Acceptance**: Automated memory profiling in CI pipeline
 
@@ -53,6 +67,7 @@
 
 ## Completed & Archived
 
+- Integration test framework implementation (integration-test-framework_6.md) - COMPLETED
 - Process improvements and testing strategy (process-improvements-testing_5.md) - COMPLETED
 - PRD compliance validation framework - COMPLETED  
 - Context management guidelines - COMPLETED
