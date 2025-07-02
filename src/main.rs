@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use tracing::info;
 
 mod discovery;
+mod reader;
 
 #[derive(Parser, Debug)]
 #[command(name = "rs-sft-sentences")]
@@ -91,6 +92,53 @@ async fn main() -> Result<()> {
     println!("rs-sft-sentences v{} - File discovery complete", env!("CARGO_PKG_VERSION"));
     println!("Found {} files matching pattern *-0.txt", discovered_files.len());
     println!("Valid files: {}, Files with issues: {}", valid_files.len(), invalid_files.len());
+    
+    // Process valid files with async reader
+    if !valid_files.is_empty() {
+        info!("Starting async file reading for {} valid files", valid_files.len());
+        
+        let reader_config = reader::ReaderConfig {
+            fail_fast: args.fail_fast,
+            buffer_size: 8192,
+        };
+        let file_reader = reader::AsyncFileReader::new(reader_config);
+        
+        // WHY: process files sequentially to demonstrate async reading without overwhelming memory
+        let valid_paths: Vec<_> = valid_files.iter().map(|f| &f.path).collect();
+        let read_results = file_reader.read_files_batch(&valid_paths).await?;
+        
+        let mut total_lines = 0u64;
+        let mut total_bytes = 0u64;
+        let mut successful_reads = 0;
+        let mut failed_reads = 0;
+        
+        for (_lines, stats) in read_results {
+            total_lines += stats.lines_read;
+            total_bytes += stats.bytes_read;
+            
+            if stats.read_error.is_some() {
+                failed_reads += 1;
+            } else {
+                successful_reads += 1;
+            }
+            
+            info!("Read {}: {} lines, {} bytes", stats.file_path, stats.lines_read, stats.bytes_read);
+            
+            if let Some(ref error) = stats.read_error {
+                info!("Read error for {}: {}", stats.file_path, error);
+            }
+        }
+        
+        println!("File reading complete:");
+        println!("  Successfully read: {successful_reads} files");
+        if failed_reads > 0 {
+            println!("  Failed to read: {failed_reads} files");
+        }
+        println!("  Total lines processed: {total_lines}");
+        println!("  Total bytes processed: {total_bytes}");
+        
+        info!("Async file reading completed: {} successful, {} failed", successful_reads, failed_reads);
+    }
     
     Ok(())
 }

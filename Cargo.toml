@@ -7,6 +7,10 @@ edition = "2021"
 name = "rs-sft-sentences"
 path = "src/main.rs"
 
+[lib]
+name = "rs_sft_sentences"
+path = "src/lib.rs"
+
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }
 clap = { version = "4.0", features = ["derive"] }
@@ -24,7 +28,12 @@ tokio-stream = { version = "0.1", features = ["fs"] }
 
 [dev-dependencies]
 tempfile = "3.0"
+criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
 
 [features]
 default = []
 mmap = ["memmap2"]
+
+[[bench]]
+name = "reader_bench"
+harness = false

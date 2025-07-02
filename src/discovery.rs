@@ -7,16 +7,12 @@ use tracing::{debug, info, warn};
 
 /// Configuration for file discovery behavior
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct DiscoveryConfig {
     /// Whether to fail fast on first error or continue processing
     pub fail_fast: bool,
 }
 
-impl Default for DiscoveryConfig {
-    fn default() -> Self {
-        Self { fail_fast: false }
-    }
-}
 
 /// Result of file discovery validation
 #[derive(Debug)]
@@ -46,10 +42,7 @@ pub fn discover_files(
     futures::stream::unfold(
         DiscoveryState::new(root_path, config),
         |mut state| async move {
-            match state.next_file().await {
-                Some(result) => Some((result, state)),
-                None => None,
-            }
+            state.next_file().await.map(|result| (result, state))
         }
     )
 }
@@ -97,7 +90,7 @@ impl DiscoveryState {
                             Some(self.validate_file(path).await)
                         }
                         Err(e) => {
-                            let error_msg = format!("Glob iteration error: {}", e);
+                            let error_msg = format!("Glob iteration error: {e}");
                             warn!("{}", error_msg);
                             
                             if self.config.fail_fast {
