@@ -1,0 +1,21 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Tool outputs
+run_stats.json
+*_rs_sft_sentences.txt
+
+# Temporary files
+*.tmp
+*.temp
