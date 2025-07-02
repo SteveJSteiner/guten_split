@@ -80,6 +80,15 @@ rg "faster|optimized|throughput|reduces.*syscalls" src/
 
 **Prime Directive: When in doubt, ASK.** The UI shows users when context is low.
 
+**Scope Creep Prevention:**
+- **Core Question**: "HAVE WE ALLOWED SCOPE CREEP?" — Ask this at every implementation decision point
+- **Minimal Viable Implementation**: Make the framework/feature work correctly in the *simplest* way first
+- **Scope Classification**: When scope expansion is detected, ASK user to classify as:
+  - **EXTRANEOUS SCOPE** → Remove from current task
+  - **DEFERRED SCOPE** → Move to follow-up task  
+  - **ESSENTIAL SCOPE** → Keep but acknowledge expansion
+- **Decision Template**: "I've implemented [minimal core]. I'm considering adding [additional work]. Should this be DEFERRED to a follow-up task or is it ESSENTIAL for minimal viable completion?"
+
 **Context Management Guidelines:**
 - **Early in conversation**: Can handle process-adjacent work (new tests, minor docs updates)
 - **Mid-conversation**: Focus on core feature work; ask before process improvements
@@ -92,10 +101,11 @@ rg "faster|optimized|throughput|reduces.*syscalls" src/
 - **Rule**: Don't mix process improvements with feature development, but features must complete all process requirements
 
 **Work Chunking Strategy:**
-1. **Complete features atomically** — Feature + all its required tests/docs/validation in one session
-2. **Separate process improvements** — Handle workflow/strategy changes in dedicated sessions  
-3. **Ask before context-heavy additions** — When adding tests/docs would push context > 60%, ask first
-4. **Summarize at boundaries** — Preserve state when approaching context limits
+1. **Minimal viable completion first** — Get core functionality working with simplest implementation
+2. **Regular scope audits** — At each expansion point, ask "Is this minimal viable completion?"
+3. **Separate process improvements** — Handle workflow/strategy changes in dedicated sessions  
+4. **Ask before context-heavy additions** — When adding tests/docs would push context > 60%, ask first
+5. **Summarize at boundaries** — Preserve state when approaching context limits
 
 ⸻
 
