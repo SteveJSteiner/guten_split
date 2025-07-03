@@ -7,7 +7,7 @@ Scope → This guide applies to the Gutenberg Sentence Extractor repository and 
 1 Philosophy
 	•	One thought → one task → one validated commit.  Each atomic improvement must compile, be covered by tests, and land as its own git commit.
 	•	Explain why, not just how.  Inline comments focus on rationale—trade‑offs, Rust idioms, async pitfalls—assuming a reader familiar with systems concepts but new to Rust.
-	•	Active task management.  Active tasks stay in /tasks; completed tasks move to /tasks/completed/ during the completion commit.
+	•	Active task management.  Active tasks stay in /tasks; completed tasks move to /completed_tasks/ during the completion commit.
 	•	Human in the loop.  Gemini drafts tasks; reviewer stevejs approves, amends, or rejects them before merge.
 
 ⸻
@@ -22,7 +22,7 @@ flowchart LR
 
 2.1 When drafting a task Gemini must:
 	1.	Ensure atomic scope—it must pass tests in isolation.
-	2.	Keep active tasks in /tasks; move completed tasks to /tasks/completed/ during completion commit.
+	2.	Keep active tasks in /tasks; move completed tasks to /completed_tasks/ during completion commit.
 	3.	Name the new task file <semantic-name>_<index>.md, where <semantic-name> is a concise, kebab-case description and <index> is a monotonically increasing integer (1, 2, 3, …) regardless of date.
 	4.	Commit message should begin with feat: / fix: / docs: etc., include a brief summary, and end with (see tasks/<file>).
 
