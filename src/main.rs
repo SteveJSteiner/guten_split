@@ -1,11 +1,44 @@
 use anyhow::Result;
 use clap::Parser;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use tokio::fs::File;
+use tokio::io::{AsyncWriteExt, BufWriter};
 use tracing::info;
 
 mod discovery;
 mod reader;
 mod sentence_detector;
+
+/// Generate auxiliary file path from source file path
+/// WHY: Follows PRD F-7 specification for aux file naming
+fn generate_aux_file_path(source_path: &Path) -> PathBuf {
+    let mut aux_path = source_path.to_path_buf();
+    let file_stem = aux_path.file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("unknown");
+    aux_path.set_file_name(format!("{}_rs_sft_sentences.txt", file_stem));
+    aux_path
+}
+
+/// Write sentences to auxiliary file in PRD F-7 format
+/// WHY: Implements core requirement for auxiliary file generation
+async fn write_auxiliary_file(
+    aux_path: &Path,
+    sentences: &[sentence_detector::DetectedSentence],
+    detector: &sentence_detector::SentenceDetector,
+) -> Result<()> {
+    let file = File::create(aux_path).await?;
+    let mut writer = BufWriter::new(file);
+    
+    for sentence in sentences {
+        let formatted_line = detector.format_sentence_output(sentence);
+        writer.write_all(formatted_line.as_bytes()).await?;
+        writer.write_all(b"\n").await?;
+    }
+    
+    writer.flush().await?;
+    Ok(())
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "rs-sft-sentences")]
@@ -142,17 +175,36 @@ async fn main() -> Result<()> {
                         
                         info!("Detected {} sentences in {}", sentence_count, stats.file_path);
                         
-                        // WHY: demonstrate output format as per F-5 specification
-                        if sentence_count > 0 && sentence_count <= 5 {
-                            info!("Sample sentences from {}:", stats.file_path);
-                            for sentence in sentences.iter().take(3) {
-                                let formatted = sentence_detector.format_sentence_output(sentence);
-                                info!("  {}", formatted);
+                        // WHY: generate auxiliary file as per F-7 requirement
+                        let source_path = Path::new(&stats.file_path);
+                        let aux_path = generate_aux_file_path(source_path);
+                        
+                        match write_auxiliary_file(&aux_path, &sentences, &sentence_detector).await {
+                            Ok(()) => {
+                                info!("Successfully wrote auxiliary file: {}", aux_path.display());
+                                
+                                // WHY: demonstrate output format as per F-5 specification
+                                if sentence_count > 0 && sentence_count <= 3 {
+                                    info!("Sample sentences from {}:", stats.file_path);
+                                    for sentence in sentences.iter().take(2) {
+                                        let formatted = sentence_detector.format_sentence_output(sentence);
+                                        info!("  {}", formatted);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                info!("Failed to write auxiliary file {}: {}", aux_path.display(), e);
+                                if args.fail_fast {
+                                    return Err(e);
+                                }
                             }
                         }
                     }
                     Err(e) => {
                         info!("Failed to detect sentences in {}: {}", stats.file_path, e);
+                        if args.fail_fast {
+                            return Err(anyhow::anyhow!("Sentence detection failed: {}", e));
+                        }
                     }
                 }
             }
