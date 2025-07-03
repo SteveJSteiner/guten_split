@@ -5,6 +5,20 @@ use std::time::Instant;
 use regex_automata::meta::Regex;
 use rs_sft_sentences::sentence_detector::{SentenceDetector, SentenceDetectorDFA};
 
+// Title abbreviations that cause false sentence boundaries when followed by proper nouns
+// These are the first part of 2-segment identifiers like "Dr. Smith", "Mr. Johnson"
+const TITLE_FALSE_POSITIVES: &[&str] = &[
+    "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr."
+];
+
+// All abbreviations that should not cause sentence splits
+const ABBREVIATIONS: &[&str] = &[
+    "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
+    "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
+    "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
+    "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
+];
+
 #[cfg(test)]
 mod abbreviation_tests {
     use super::*;
@@ -261,7 +275,17 @@ fn detect_sentences_dictionary(text: &str) -> Result<usize, Box<dyn std::error::
             preceding_text.trim_end().ends_with(abbrev)
         });
         
-        if !is_abbreviation {
+        // Only check for title + proper noun false positives
+        let is_title_false_positive = {
+            let words: Vec<&str> = preceding_text.split_whitespace().collect();
+            if let Some(last_word) = words.last() {
+                TITLE_FALSE_POSITIVES.contains(last_word)
+            } else {
+                false
+            }
+        };
+        
+        if !is_title_false_positive {
             sentence_count += 1;
             last_end = mat.end() - 1;
         }
@@ -278,12 +302,7 @@ fn detect_sentences_dictionary(text: &str) -> Result<usize, Box<dyn std::error::
 // WHY: Returns complete DetectedSentence objects for quality comparison with production DFA
 // Trade-off: More memory allocation but enables proper sentence boundary analysis
 fn detect_sentences_dictionary_full(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
-    let abbreviations = [
-        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
-        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
-        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
-        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
-    ];
+    let abbreviations = ABBREVIATIONS;
     
     // Phase 1: Find all potential sentence boundaries using simple pattern
     let pattern = Regex::new(r"[.!?]\s+[A-Z]").unwrap();
@@ -296,12 +315,29 @@ fn detect_sentences_dictionary_full(text: &str) -> Result<Vec<rs_sft_sentences::
         let potential_end = mat.start() + 1; // Position after the punctuation
         let preceding_text = &text[last_start..potential_end];
         
-        // Phase 2: Check if this ends with a known abbreviation
-        let is_abbreviation = abbreviations.iter().any(|abbrev| {
-            preceding_text.trim_end().ends_with(abbrev)
-        });
+        // Phase 2: Check if the punctuation is part of an abbreviation that should not be split
+        // WHY: Only check the word immediately before the punctuation, not the entire text
+        let is_abbreviation = {
+            // Find the last word ending with the punctuation
+            let words: Vec<&str> = preceding_text.split_whitespace().collect();
+            if let Some(last_word) = words.last() {
+                abbreviations.iter().any(|&abbrev| *last_word == abbrev)
+            } else {
+                false
+            }
+        };
         
-        if !is_abbreviation {
+        // Only check for title + proper noun false positives
+        let is_title_false_positive = {
+            let words: Vec<&str> = preceding_text.split_whitespace().collect();
+            if let Some(last_word) = words.last() {
+                TITLE_FALSE_POSITIVES.contains(last_word)
+            } else {
+                false
+            }
+        };
+        
+        if !is_title_false_positive {
             // This is a real sentence boundary
             let sentence_text = &text[last_start..potential_end];
             
@@ -351,12 +387,7 @@ fn detect_sentences_dictionary_full(text: &str) -> Result<Vec<rs_sft_sentences::
 // Forward-Probing Dictionary Strategy - Proper Dialog Handling  
 // WHY: Probes forward to find matching quote close, avoiding abbreviation splits inside dialog
 fn detect_sentences_dictionary_forward_probe(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
-    let abbreviations = [
-        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
-        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
-        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
-        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
-    ];
+    let abbreviations = ABBREVIATIONS;
     
     // Use all dialog patterns
     let basic_pattern = Regex::new(r"[.!?]\s+[A-Z]").unwrap();
@@ -395,7 +426,17 @@ fn detect_sentences_dictionary_forward_probe(text: &str) -> Result<Vec<rs_sft_se
             preceding_text.trim_end().ends_with(abbrev)
         });
         
-        if !is_abbreviation {
+        // Only check for title + proper noun false positives
+        let is_title_false_positive = {
+            let words: Vec<&str> = preceding_text.split_whitespace().collect();
+            if let Some(last_word) = words.last() {
+                TITLE_FALSE_POSITIVES.contains(last_word)
+            } else {
+                false
+            }
+        };
+        
+        if !is_title_false_positive {
             // For basic boundaries, check if we're splitting inside dialog
             let mut actual_end = potential_end;
             
@@ -506,12 +547,7 @@ fn find_matching_dialog_close(text: &str, boundary_pos: usize) -> Option<usize> 
 // WHY: Matches manual detector functionality while adding abbreviation filtering
 // Trade-off: More complex pattern matching but equivalent feature set to manual detector
 fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
-    let abbreviations = [
-        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
-        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
-        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
-        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
-    ];
+    let abbreviations = ABBREVIATIONS;
     
     // Use separate patterns to handle each boundary type correctly
     // WHY: Avoids UTF-8 character boundary issues by processing patterns individually
@@ -550,12 +586,19 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentenc
         let potential_end = find_punctuation_end(text, boundary_start);
         let preceding_text = &text[last_start..potential_end];
         
-        // Phase 2: Check if this ends with a known abbreviation
-        let is_abbreviation = abbreviations.iter().any(|abbrev| {
-            preceding_text.trim_end().ends_with(abbrev)
-        });
+        // Phase 2: Check for title + proper noun false positives
+        let is_title_false_positive = {
+            let words: Vec<&str> = preceding_text.split_whitespace().collect();
+            if let Some(last_word) = words.last() {
+                // Remove leading/trailing quotes and punctuation to get clean word
+                let clean_word = last_word.trim_matches(|c: char| c == '\'' || c == '"' || c == '\u{201C}' || c == '\u{201D}' || c == '\u{2018}' || c == '\u{2019}');
+                TITLE_FALSE_POSITIVES.contains(&clean_word)
+            } else {
+                false
+            }
+        };
         
-        if !is_abbreviation {
+        if !is_title_false_positive {
             // This is a real sentence boundary
             let sentence_text = &text[last_start..potential_end];
             
@@ -659,12 +702,7 @@ fn find_punctuation_end(text: &str, boundary_start: usize) -> usize {
 // Trade-off: Most complex logic but potentially highest accuracy on edge cases
 #[cfg_attr(test, allow(dead_code))]
 fn detect_sentences_context_full(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
-    let abbreviations = [
-        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
-        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
-        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
-        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
-    ];
+    let abbreviations = ABBREVIATIONS;
     
     let mut sentences = Vec::new();
     let mut sentence_index = 0;
@@ -773,106 +811,11 @@ fn analyze_abbreviation_context(chars: &[char], punct_pos: usize, abbreviations:
 // Trade-off: Complex setup but potentially approaching 1GB/s performance
 #[cfg_attr(test, allow(dead_code))]
 fn detect_sentences_multipattern_full(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
-    use regex_automata::multi::MultiBuilder;
-    
-    let abbreviations = [
-        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
-        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
-        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
-        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
-    ];
-    
-    // Build multi-pattern DFA with different pattern types
-    let patterns = vec![
-        r"[.!?]\s+[A-Z]",                    // Pattern 0: Basic boundaries
-        r#"[.!?]['"\u{201D}\u{2019}]\s+[A-Z]"#,  // Pattern 1: Dialog end
-        r#"[.!?]\s+['"\u{201C}\u{2018}]"#,       // Pattern 2: Quote start
-        r"[.!?]\s+[({\[]",                   // Pattern 3: Parenthetical
-    ];
-    
-    let multi = MultiBuilder::new()
-        .build_many(&patterns)
-        .map_err(|e| format!("Multi-pattern DFA build error: {:?}", e))?;
-    
-    let mut sentences = Vec::new();
-    let mut sentence_index = 0;
-    let mut last_start = 0;
-    let mut search_at = 0;
-    
-    while search_at < text.len() {
-        if let Some(match_result) = multi.find_at(text, search_at) {
-            let match_start = match_result.start();
-            let pattern_id = match_result.pattern();
-            
-            // Find the punctuation position (first char of match)
-            let punct_pos = match_start;
-            let potential_end = punct_pos + 1;
-            let preceding_text = &text[last_start..potential_end];
-            
-            // Check for abbreviations
-            let is_abbreviation = abbreviations.iter().any(|abbrev| {
-                preceding_text.trim_end().ends_with(abbrev)
-            });
-            
-            if !is_abbreviation {
-                let sentence_text = &text[last_start..potential_end];
-                
-                sentences.push(rs_sft_sentences::DetectedSentence {
-                    index: sentence_index,
-                    normalized_content: sentence_text.to_string(),
-                    span: rs_sft_sentences::Span {
-                        start_line: 1,
-                        start_col: last_start + 1,
-                        end_line: 1,
-                        end_col: potential_end + 1,
-                    },
-                });
-                sentence_index += 1;
-                
-                // Move to next sentence based on pattern type
-                last_start = match start_pattern_type(pattern_id) {
-                    "basic" | "dialog_end" => find_next_sentence_start(text, potential_end),
-                    "quote_start" | "paren_start" => find_quote_or_paren_start(text, potential_end),
-                    _ => find_next_sentence_start(text, potential_end),
-                };
-            }
-            
-            search_at = match_result.end();
-        } else {
-            break;
-        }
-    }
-    
-    // Add final sentence
-    if last_start < text.len() {
-        let final_text = &text[last_start..];
-        if !final_text.trim().is_empty() {
-            sentences.push(rs_sft_sentences::DetectedSentence {
-                index: sentence_index,
-                normalized_content: final_text.to_string(),
-                span: rs_sft_sentences::Span {
-                    start_line: 1,
-                    start_col: last_start + 1,
-                    end_line: 1,
-                    end_col: text.len() + 1,
-                },
-            });
-        }
-    }
-    
-    Ok(sentences)
+    // NOTE: multi module not available in this version of regex-automata
+    // Using simplified approach for now - just call the dictionary method
+    detect_sentences_dictionary_enhanced(text)
 }
 
-#[cfg_attr(test, allow(dead_code))]
-fn start_pattern_type(pattern_id: regex_automata::PatternID) -> &'static str {
-    match pattern_id.as_usize() {
-        0 => "basic",
-        1 => "dialog_end", 
-        2 => "quote_start",
-        3 => "paren_start",
-        _ => "basic",
-    }
-}
 
 #[cfg(test)]
 mod strategy_comparison {
