@@ -25,12 +25,33 @@
 - **Context**: Re-enable test_pipeline_performance with correct column position calculations
 - **Acceptance**: 500+ sentence processing validates within performance budget
 
+- **Feature**: Multi-pattern DFA with PatternID for narrative vs dialog boundaries
+- **Type**: Core Feature
+- **Effort**: Medium
+- **Prerequisites**: Basic DFA implementation (dfa-implementation-comparison_9)
+- **Context**: Extend single-pattern DFA to distinguish sentence types using PatternID
+- **Acceptance**: Pattern 0 for narrative boundaries, Pattern 1 for dialog boundaries, identical output to manual implementation
+
+- **Feature**: Memory-mapped file processing with streaming DFA
+- **Type**: Core Feature
+- **Effort**: Medium
+- **Prerequisites**: Basic DFA implementation (dfa-implementation-comparison_9)
+- **Context**: Add mmap support for large file processing with DFA streaming
+- **Acceptance**: DFA processes memory-mapped files without loading into heap memory
+
+- **Feature**: 3-char lookbehind abbreviation checking
+- **Type**: Core Feature
+- **Effort**: Small
+- **Prerequisites**: Basic DFA implementation (dfa-implementation-comparison_9)
+- **Context**: O(1) post-processing to handle abbreviations after DFA match
+- **Acceptance**: Abbreviations like "Dr." correctly detected and skipped
+
 - **Feature**: Sentence detection throughput benchmarks
 - **Type**: Process-Feature (performance validation)
 - **Effort**: Small
-- **Prerequisites**: Current benchmark suite
-- **Context**: Address performance testing gaps identified in testing strategy
-- **Acceptance**: Benchmarks for FST performance on various text complexity levels
+- **Prerequisites**: DFA implementation alongside manual implementation
+- **Context**: Compare manual vs DFA performance on various text complexity levels
+- **Acceptance**: Benchmarks show performance difference between manual and DFA approaches
 
 - **Feature**: Memory usage profiling integration
 - **Type**: Process-Feature (performance validation)  
