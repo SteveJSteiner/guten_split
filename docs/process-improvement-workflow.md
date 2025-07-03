@@ -83,6 +83,7 @@ Use this template for process improvement tasks:
 - Update /docs/ for detailed guidance  
 - Update task templates for new requirements
 - Ensure cross-references are correct
+- Move completed tasks to /tasks/completed/ during completion commits
 
 ### Change Communication
 - Process changes should be committed with clear rationale

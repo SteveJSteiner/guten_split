@@ -7,7 +7,7 @@ Scope → This guide applies to the Gutenberg Sentence Extractor repository and 
 1 Philosophy
 	•	One thought → one task → one validated commit.  Each atomic improvement must compile, be covered by tests, and land as its own git commit.
 	•	Explain why, not just how.  Inline comments focus on rationale—trade‑offs, Rust idioms, async pitfalls—assuming a reader familiar with systems concepts but new to Rust.
-	•	Rolling window of ten tasks.  Only the ten most‑recent task files stay in /tasks; older ones are deleted in the same commit that adds a new task (history preserved in git).
+	•	Active task management.  Active tasks stay in /tasks; completed tasks move to /tasks/completed/ during the completion commit.
 	•	Human in the loop.  Claude drafts tasks; reviewer stevejs approves, amends, or rejects them before merge.
 
 ⸻
@@ -22,8 +22,8 @@ flowchart LR
 
 2.1 When drafting a task Claude must:
 	1.	Ensure atomic scope—it must pass tests in isolation.
-	2.	Delete the oldest file in /tasks when there are already ten present.
-	3.	**3. Name the new task file <semantic-name>_<index>.md, where <semantic-name> is a concise, kebab-case description and <index> is a monotonically increasing integer (1, 2, 3, …) regardless of date.
+	2.	Keep active tasks in /tasks; move completed tasks to /tasks/completed/ during completion commit.
+	3.	Name the new task file <semantic-name>_<index>.md, where <semantic-name> is a concise, kebab-case description and <index> is a monotonically increasing integer (1, 2, 3, …) regardless of date.
 	4.	Commit message should begin with feat: / fix: / docs: etc., include a brief summary, and end with (see tasks/<file>).
 
 ⸻
