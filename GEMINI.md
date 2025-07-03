@@ -20,7 +20,12 @@ flowchart LR
     pr --> stevejs[Review by stevejs]
     stevejs -->|approve| main
 
-2.1 When drafting a task Gemini must:
+2.1 Exploration Tasks
+	•	For research/investigation work, see docs/exploration-workflow.md
+	•	Uses explore/<task-id> branches with git finalize automation
+	•	Results cherry-picked to main, branches preserved as immutable tags
+
+2.2 When drafting a task Gemini must:
 	1.	Ensure atomic scope—it must pass tests in isolation.
 	2.	Keep active tasks in /tasks; move completed tasks to /completed_tasks/ during completion commit.
 	3.	Name the new task file <semantic-name>_<index>.<username>.md, where <semantic-name> is a concise, kebab-case description, <index> is from /tasks/.next_id (increment after use), and <username> prevents multi-user conflicts.

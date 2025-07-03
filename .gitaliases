@@ -1,0 +1,13 @@
+[alias]
+    finalize = "!f(){ \
+        set -e; b=$(git symbolic-ref --short HEAD); trap 'git cherry-pick --abort 2>/dev/null || true; git checkout \"$b\"' ERR; \
+        [[ $b == explore/* ]] || { echo '❌ Must be on explore/*' >&2; exit 1; }; \
+        [[ $1 ]] && git rev-parse --verify $1 >/dev/null || { echo '❌ Bad SHA'; exit 1; }; \
+        id=${b#explore/}; echo \"🔍 Finalizing $id\"; read -p 'Continue? [y/N] ' -n1 yn; echo; [[ $yn =~ [Yy] ]] || exit 1; \
+        git checkout main && git cherry-pick $1 && \
+        git tag refs/tags/explore/$id $1 && \
+        remote=${GIT_REMOTE:-$(git remote | head -1)} && \
+        echo \"🚀 Pushing tag and deleting branch on remote '$remote'...\" && \
+        git push \"$remote\" refs/tags/explore/$id :refs/heads/$b && \
+        echo '✅ Done'; \
+    }; f"
