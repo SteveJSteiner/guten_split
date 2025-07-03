@@ -28,21 +28,21 @@
 - **Feature**: Multi-pattern DFA with PatternID for narrative vs dialog boundaries
 - **Type**: Core Feature
 - **Effort**: Medium
-- **Prerequisites**: Basic DFA implementation (dfa-implementation-comparison_9)
+- **Prerequisites**: High-performance DFA implementation (completed)
 - **Context**: Extend single-pattern DFA to distinguish sentence types using PatternID
 - **Acceptance**: Pattern 0 for narrative boundaries, Pattern 1 for dialog boundaries, identical output to manual implementation
 
 - **Feature**: Memory-mapped file processing with streaming DFA
 - **Type**: Core Feature
 - **Effort**: Medium
-- **Prerequisites**: Basic DFA implementation (dfa-implementation-comparison_9)
+- **Prerequisites**: High-performance DFA implementation (completed)
 - **Context**: Add mmap support for large file processing with DFA streaming
 - **Acceptance**: DFA processes memory-mapped files without loading into heap memory
 
 - **Feature**: 3-char lookbehind abbreviation checking
 - **Type**: Core Feature
 - **Effort**: Small
-- **Prerequisites**: Basic DFA implementation (dfa-implementation-comparison_9)
+- **Prerequisites**: High-performance DFA implementation (completed)
 - **Context**: O(1) post-processing to handle abbreviations after DFA match
 - **Acceptance**: Abbreviations like "Dr." correctly detected and skipped
 
@@ -93,13 +93,6 @@
 - **Context**: Integrate claim validation into cargo test workflow
 - **Acceptance**: `cargo test` automatically detects and reports unvalidated claims
 
-## Completed & Archived
-
-- Integration test framework implementation (integration-test-framework_6.md) - COMPLETED
-- Process improvements and testing strategy (process-improvements-testing_5.md) - COMPLETED
-- PRD compliance validation framework - COMPLETED  
-- Context management guidelines - COMPLETED
-- Make discovering next_task_id simpler (next-task-id-discovery_13.stevejs.md) - COMPLETED
 
 ## Usage Guidelines
 

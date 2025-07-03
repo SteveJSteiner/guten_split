@@ -116,7 +116,7 @@ Topic	Guideline	WHY
 Edition	Rust 2021	Widest stable baseline; async‑await mature.
 Async runtime	Tokio 1.x	Matches PRD; ecosystem standard; IOCP/epoll under hood.
 File IO	tokio::fs & optional memmap2	Non‑blocking default; mmap for benchmark parity.
-FST	fst crate	Guarantees linear‑time lookup; zero‑alloc reads.
+Sentence Detection	regex-automata crate	High-performance DFA with 149.8 MiB/s throughput.
 Progress	indicatif multi‑progress bars	Ergonomic, cross‑platform; keeps users informed during long scans.
 Lock file	Commit Cargo.lock	Reproducible builds and tutorial consistency.
 Docs folder	/docs/ for high‑level explainers	Separates narrative docs from code comments.
@@ -135,7 +135,7 @@ Inline WHY comments use this style:
 
 Claude chooses the next task by scanning open tasks & git diff:
 	1.	Red state first.  Fix failing tests or clippy warnings before new features.
-	2.	Shortest critical path.  Prioritise tasks unblocking others (e.g., FST loader before progress bars).
+	2.	Shortest critical path.  Prioritise tasks unblocking others (e.g., DFA loader before progress bars).
 	3.	Knowledge debt.  Add docs when unfamiliar Rust design is introduced.
 
 ⸻
@@ -143,7 +143,7 @@ Claude chooses the next task by scanning open tasks & git diff:
 6 Example Commit Sequence
 
 Commit	Task	Sample Message
-d4e5b3c	fst-loader_1	feat: load sentence FST at startup (see tasks/fst-loader_1.md)
+d4e5b3c	dfa-loader_1	feat: load sentence DFA at startup (see tasks/dfa-loader_1.md)
 c3a9fed	async-reader_2	feat: async buffered read for source files (see tasks/async-reader_2.md)
 …	…	…
 

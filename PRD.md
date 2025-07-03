@@ -2,12 +2,12 @@ Product Requirements Document (PRD)
 
 1 Purpose
 
-Provide a high-throughput CLI tool that scans a local mirror of Project Gutenberg, tokenises each “*-0.txt” UTF-8 text into sentences using a sentence-boundary detector built from a startup-generated finite-state transducer (FST), and writes an auxiliary file alongside each source containing normalised sentences and span metadata. The tool must support fully asynchronous I/O and be safe to re-run incrementally.
+Provide a high-throughput CLI tool that scans a local mirror of Project Gutenberg, tokenises each “*-0.txt” UTF-8 text into sentences using a sentence-boundary detector built from a startup-generated sentence boundary detector (DFA), and writes an auxiliary file alongside each source containing normalised sentences and span metadata. The tool must support fully asynchronous I/O and be safe to re-run incrementally.
 
 2 Glossary
 
 Term	Definition
-FST	Finite-State Transducer compiled at startup from a sentence-boundary spec.
+DFA	Deterministic Finite Automaton compiled at startup from sentence-boundary patterns.
 Sentence normalisation	Removal of intra-sentence hard line breaks (\n, \r\n) with whitespace collapsed to a single space. Everything else remains byte-exact.
 Aux file	<orig>_rs_sft_sentences.txt written next to its source.
 Span	(start_line, start_col, end_line, end_col)—all one-based, columns measured in Unicode scalar values (characters).
@@ -25,7 +25,7 @@ Span	(start_line, start_col, end_line, end_col)—all one-based, columns measure
 
 3.2 Out of Scope (Now)
 	•	Distributed processing across hosts.
-	•	Optimising the FST beyond linear-time guarantees.
+	•	Optimising the DFA beyond linear-time guarantees.
 	•	Sentence boundary training—assume rule set is externally supplied.
 
 4 Functional Requirements
@@ -33,20 +33,20 @@ Span	(start_line, start_col, end_line, end_col)—all one-based, columns measure
 ID	Requirement
 F-1	CLI accepts: root_dir, --overwrite_all, --fail_fast, --use_mmap, --no_progress, --stats_out.
 F-2	Recursively locate and stream-process every *-0.txt.
-F-3	At startup, compile sentence-boundary spec into an immutable FST stored in memory for all worker tasks.
+F-3	At startup, compile sentence-boundary patterns into a high-performance DFA stored in memory for all worker tasks.
 F-4	Read each file with async buffered reader (Tokio) or memory-map (when --use_mmap).
-F-5	Detect sentence boundaries with the FST, producing: index<TAB>sentence<TAB>(start_line,start_col,end_line,end_col) per line.
+F-5	Detect sentence boundaries with the DFA, producing: index<TAB>sentence<TAB>(start_line,start_col,end_line,end_col) per line.
 F-6	Normalise sentences by removing hard line breaks; treat \r\n as single break; preserve all other bytes.
 F-7	Write results via async buffered writer to <path>_rs_sft_sentences.txt.
 F-8	Generate per-file stats (chars processed, sentences, wall-clock ms) and aggregate into run_stats.json with total chars/sec.
 F-9	Skip processing when aux file exists and completes without truncation; detect partial files by trailing newline + EOF.
-F-10	Respect --fail_fast: abort entire run on first I/O/UTF-8/FST error.
+F-10	Respect --fail_fast: abort entire run on first I/O/UTF-8/DFA error.
 F-11	Cache discovered file locations to avoid slow directory traversal on subsequent runs.
 
 5 Non-Functional Requirements
 
 Category	Requirement
-Tech Stack	Rust (2021 edition) with the Tokio async runtime; sentence FST via the fst crate; progress bars via indicatif; built with cargo --release.
+Tech Stack	Rust (2021 edition) with the Tokio async runtime; sentence DFA via regex-automata crate; progress bars via indicatif; built with cargo --release.
 Performance	≥ 10 MB/s sustained on NVMe SSD with async buffered I/O; ≤ 30 % single-core CPU when I/O-bound.
 Scalability	Should saturate multiple cores using Tokio’s work-stealing scheduler.
 Portability	Linux (x86-64, aarch64) and Windows 10+.
@@ -69,7 +69,7 @@ rs-sft-sentences <root_dir>
 Progress: uses the indicatif crate to render multi-progress bars: files processed, bytes/s, chars/s, ETA.
 
 8 Acceptance Criteria
-	1.	Unit tests covering FST boundary detection and normalisation rules.
+	1.	Unit tests covering DFA boundary detection and normalisation rules.
 	2.	Golden-file tests on at least five Gutenberg texts; diff is empty.
 	3.	Throughput benchmark meets performance NFR on reference hardware.
 	4.	run_stats.json includes per-file counts plus aggregate chars/sec.
@@ -80,14 +80,14 @@ Progress: uses the indicatif crate to render multi-progress bars: files processe
 
 Milestone	Deliverable	Target Date
 M1	CLI skeleton; file discovery; async read/write
-M2	FST generation from spec; integration tests
+M2	DFA pattern compilation; integration tests
 M3	Stats aggregation; mmap mode; perf bench; progress bars
 M4	Docs, CI, release v0.1
 
 10 Risks & Mitigations
 
 Risk	Likelihood	Impact	Mitigation
-FST spec changes frequently	M	M	Hot-reload FST per file batch when spec mtime changes.
+DFA patterns change frequently	M	M	Hot-reload DFA per file batch when patterns change.
 Very large files cause memory spikes	L	M	Stream processing and bounded buffers.
 Windows newline variants mishandled	M	L	Normalisation unit tests on mixed CRLF data.
 
@@ -95,4 +95,4 @@ Windows newline variants mishandled	M	L	Normalisation unit tests on mixed CRLF d
 	1.	Which concrete DSL or regex subset will define the sentence-boundary spec?
 	2.	Should stats include per-sentence length histograms?
 	3.	Need coloured CLI progress bars or silent by default? (Current default = on.)
-	4.	Future: move from FST to PDA for cross-paragraph context?
+	4.	Future: move from DFA to PDA for cross-paragraph context?
