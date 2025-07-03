@@ -1,7 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use rs_sft_sentences::discovery;
 use rs_sft_sentences::reader;
-use rs_sft_sentences::sentence_detector::{SentenceBoundaryRules, SentenceDetector};
+use rs_sft_sentences::sentence_detector::{SentenceBoundaryRules, SentenceDetector, SentenceDetectorDFA};
 use std::path::PathBuf;
 
 const SIMPLE_TEXT: &str = "Hello world. This is a test. How are you?";
@@ -14,34 +14,59 @@ const LONG_TEXT: &str = include_str!("../tests/fixtures/long_text.txt");
 fn bench_sentence_detection(c: &mut Criterion) {
     let mut group = c.benchmark_group("sentence_detection");
 
-    // Benchmark FST compilation
-    group.bench_function("fst_compilation", |b| {
+    // Benchmark FST compilation vs DFA compilation
+    group.bench_function("manual_fst_compilation", |b| {
         b.iter(|| {
             let rules = SentenceBoundaryRules::default();
             black_box(SentenceDetector::new(rules).unwrap());
         })
     });
 
-    let detector = SentenceDetector::with_default_rules().unwrap();
-
-    // Benchmark simple text
-    group.bench_function("simple_text_detection", |b| {
+    group.bench_function("dfa_compilation", |b| {
         b.iter(|| {
-            detector.detect_sentences(black_box(SIMPLE_TEXT)).unwrap();
+            black_box(SentenceDetectorDFA::new().unwrap());
         })
     });
 
-    // Benchmark complex text
-    group.bench_function("complex_text_detection", |b| {
+    let manual_detector = SentenceDetector::with_default_rules().unwrap();
+    let dfa_detector = SentenceDetectorDFA::new().unwrap();
+
+    // Benchmark simple text - manual vs DFA
+    group.bench_function("manual_simple_text", |b| {
         b.iter(|| {
-            detector.detect_sentences(black_box(COMPLEX_TEXT)).unwrap();
+            manual_detector.detect_sentences(black_box(SIMPLE_TEXT)).unwrap();
         })
     });
 
-    // Benchmark long text
-    group.bench_function("long_text_throughput", |b| {
+    group.bench_function("dfa_simple_text", |b| {
         b.iter(|| {
-            detector.detect_sentences(black_box(LONG_TEXT)).unwrap();
+            dfa_detector.detect_sentences(black_box(SIMPLE_TEXT)).unwrap();
+        })
+    });
+
+    // Benchmark complex text - manual vs DFA
+    group.bench_function("manual_complex_text", |b| {
+        b.iter(|| {
+            manual_detector.detect_sentences(black_box(COMPLEX_TEXT)).unwrap();
+        })
+    });
+
+    group.bench_function("dfa_complex_text", |b| {
+        b.iter(|| {
+            dfa_detector.detect_sentences(black_box(COMPLEX_TEXT)).unwrap();
+        })
+    });
+
+    // Benchmark long text - manual vs DFA
+    group.bench_function("manual_long_text", |b| {
+        b.iter(|| {
+            manual_detector.detect_sentences(black_box(LONG_TEXT)).unwrap();
+        })
+    });
+
+    group.bench_function("dfa_long_text", |b| {
+        b.iter(|| {
+            dfa_detector.detect_sentences(black_box(LONG_TEXT)).unwrap();
         })
     });
 
@@ -53,17 +78,15 @@ fn bench_gutenberg_throughput(c: &mut Criterion) {
 
     // Discover and read files
     let all_text = rt.block_on(async {
-        let mirror_dir = match std::env::var("GUTENBERG_MIRROR_DIR") {
-            Ok(dir) => dir,
-            Err(_) => {
-                eprintln!("GUTENBERG_MIRROR_DIR not set, skipping throughput benchmark.");
-                return String::new();
-            }
-        };
+        let mirror_dir = std::env::var("GUTENBERG_MIRROR_DIR")
+            .unwrap_or_else(|_| {
+                let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+                format!("{}/gutenberg_texts", home)
+            });
         let root_dir = PathBuf::from(mirror_dir);
 
         if !root_dir.exists() {
-            eprintln!("GUTENberg_MIRROR_DIR does not exist, skipping throughput benchmark.");
+            eprintln!("Gutenberg mirror directory {:?} does not exist, skipping throughput benchmark.", root_dir);
             return String::new();
         }
 
@@ -101,11 +124,18 @@ fn bench_gutenberg_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("gutenberg_throughput");
     group.throughput(Throughput::Bytes(all_text.len() as u64));
 
-    let detector = SentenceDetector::with_default_rules().unwrap();
+    let manual_detector = SentenceDetector::with_default_rules().unwrap();
+    let dfa_detector = SentenceDetectorDFA::new().unwrap();
 
-    group.bench_function("detection_chars_per_sec", |b| {
+    group.bench_function("manual_chars_per_sec", |b| {
         b.iter(|| {
-            detector.detect_sentences(black_box(&all_text)).unwrap();
+            manual_detector.detect_sentences(black_box(&all_text)).unwrap();
+        })
+    });
+
+    group.bench_function("dfa_chars_per_sec", |b| {
+        b.iter(|| {
+            dfa_detector.detect_sentences(black_box(&all_text)).unwrap();
         })
     });
 

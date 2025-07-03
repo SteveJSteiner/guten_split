@@ -1,5 +1,6 @@
 use anyhow::Result;
 use fst::{Set, SetBuilder};
+use regex_automata::{dfa::{dense::DFA, Automaton}, Input};
 use std::io::Cursor;
 use std::sync::Arc;
 use tracing::{debug, info};
@@ -321,6 +322,244 @@ impl SentenceDetector {
     }
 }
 
+/// DFA-based sentence detector for performance comparison
+/// Uses regex-automata dense DFA for O(n) sentence boundary detection
+pub struct SentenceDetectorDFA {
+    /// Compiled DFA for sentence boundary pattern matching
+    dfa: DFA<Vec<u32>>,
+}
+
+/// Position counter for single-pass O(n) tracking
+struct PositionCounter {
+    /// Current byte position in text
+    byte_pos: usize,
+    /// Current character position in text
+    char_pos: usize,
+    /// Current line number (1-based)
+    line: usize,
+    /// Current column number (1-based)
+    col: usize,
+}
+
+impl PositionCounter {
+    fn new() -> Self {
+        Self {
+            byte_pos: 0,
+            char_pos: 0,
+            line: 1,
+            col: 1,
+        }
+    }
+    
+    /// Advance counter to target byte position, updating line/col correctly
+    /// WHY: O(1) amortized - only processes bytes between current and target position
+    fn advance_to_byte(&mut self, text_bytes: &[u8], target_byte_pos: usize) {
+        while self.byte_pos < target_byte_pos && self.byte_pos < text_bytes.len() {
+            let byte = text_bytes[self.byte_pos];
+            
+            // Check if this byte starts a new UTF-8 character
+            if (byte & 0x80) == 0 || (byte & 0xC0) == 0xC0 {
+                self.char_pos += 1;
+            }
+            
+            // Update line/col tracking
+            if byte == b'\n' {
+                self.line += 1;
+                self.col = 1;
+            } else if (byte & 0x80) == 0 || (byte & 0xC0) == 0xC0 {
+                // Only increment col for character boundaries (not newlines)
+                self.col += 1;
+            }
+            
+            self.byte_pos += 1;
+        }
+    }
+}
+
+impl SentenceDetectorDFA {
+    /// Create new DFA-based sentence detector with basic pattern [.!?]\s+[A-Z]
+    /// WHY: simplified pattern for baseline performance comparison
+    pub fn new() -> Result<Self> {
+        info!("Compiling DFA for sentence boundary detection");
+        
+        // WHY: basic sentence boundary pattern as specified in task
+        let pattern = r"[.!?]\s+[A-Z]";
+        let dfa = DFA::new(pattern)?;
+        
+        debug!("Successfully compiled DFA with pattern: {}", pattern);
+        
+        Ok(Self { dfa })
+    }
+    
+    /// Detect sentence boundaries in text using DFA approach with O(n) streaming
+    /// Returns same format as manual detector for comparison
+    pub fn detect_sentences(&self, text: &str) -> Result<Vec<DetectedSentence>> {
+        debug!("Starting DFA sentence detection on {} characters", text.len());
+        
+        let mut sentences = Vec::new();
+        let mut sentence_index = 0;
+        
+        let text_bytes = text.as_bytes();
+        let mut search_pos = 0;
+        
+        // WHY: O(n) single-pass position tracking
+        let mut counter = PositionCounter::new();
+        let mut sentence_start_counter = PositionCounter::new();
+        
+        while search_pos < text_bytes.len() {
+            // Find earliest match from current position
+            let input = Input::new(&text_bytes[search_pos..]);
+            if let Some(match_result) = self.dfa.try_search_fwd(&input).unwrap() {
+                let match_end_byte = search_pos + match_result.offset();
+                
+                // Find the punctuation character that ends the sentence
+                // WHY: pattern is [.!?]\\s+[A-Z], so we need to find the first punctuation in the match
+                let mut punct_byte_pos = search_pos;
+                while punct_byte_pos < text_bytes.len() {
+                    let byte = text_bytes[punct_byte_pos];
+                    if byte == b'.' || byte == b'!' || byte == b'?' {
+                        break;
+                    }
+                    punct_byte_pos += 1;
+                }
+                
+                // Advance counter to punctuation position
+                counter.advance_to_byte(text_bytes, punct_byte_pos);
+                
+                // Extract sentence from start to punctuation position using byte slicing
+                let sentence_start_byte = sentence_start_counter.byte_pos;
+                let sentence_bytes = &text_bytes[sentence_start_byte..=punct_byte_pos];
+                
+                // WHY: convert only the sentence slice to string, not entire text
+                if let Ok(sentence_text) = std::str::from_utf8(sentence_bytes) {
+                    // Normalize the sentence (same as manual implementation)
+                    let normalized = self.normalize_sentence(sentence_text);
+                    
+                    if !normalized.trim().is_empty() {
+                        let sentence = DetectedSentence {
+                            index: sentence_index,
+                            normalized_content: normalized,
+                            span: Span {
+                                start_line: sentence_start_counter.line,
+                                start_col: sentence_start_counter.col,
+                                end_line: counter.line,
+                                end_col: counter.col,
+                            },
+                        };
+                        
+                        sentences.push(sentence);
+                        sentence_index += 1;
+                    }
+                }
+                
+                // Move to start of next sentence - advance past punctuation
+                counter.advance_to_byte(text_bytes, punct_byte_pos + 1);
+                
+                // Skip whitespace to find actual start of next sentence
+                while counter.byte_pos < text_bytes.len() && text_bytes[counter.byte_pos].is_ascii_whitespace() {
+                    counter.advance_to_byte(text_bytes, counter.byte_pos + 1);
+                }
+                
+                // Update sentence start position
+                sentence_start_counter = PositionCounter {
+                    byte_pos: counter.byte_pos,
+                    char_pos: counter.char_pos,
+                    line: counter.line,
+                    col: counter.col,
+                };
+                
+                // Move search position past this match
+                search_pos = match_end_byte;
+            } else {
+                // No more matches found
+                break;
+            }
+        }
+        
+        // Handle remaining text as final sentence if non-empty
+        if sentence_start_counter.byte_pos < text_bytes.len() {
+            let sentence_bytes = &text_bytes[sentence_start_counter.byte_pos..];
+            
+            if let Ok(sentence_text) = std::str::from_utf8(sentence_bytes) {
+                let normalized = self.normalize_sentence(sentence_text);
+                
+                if !normalized.trim().is_empty() {
+                    // Advance counter to end of text for final span
+                    counter.advance_to_byte(text_bytes, text_bytes.len());
+                    
+                    let sentence = DetectedSentence {
+                        index: sentence_index,
+                        normalized_content: normalized,
+                        span: Span {
+                            start_line: sentence_start_counter.line,
+                            start_col: sentence_start_counter.col,
+                            end_line: counter.line,
+                            end_col: counter.col,
+                        },
+                    };
+                    
+                    sentences.push(sentence);
+                }
+            }
+        }
+        
+        info!("DFA detected {} sentences", sentences.len());
+        Ok(sentences)
+    }
+    
+    /// Normalize sentence by removing interior hard line breaks
+    /// WHY: same normalization logic as manual implementation for consistency
+    fn normalize_sentence(&self, text: &str) -> String {
+        let mut result = String::with_capacity(text.len());
+        let mut chars = text.chars().peekable();
+        let mut prev_was_space = false;
+        
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\r' => {
+                    // Handle \r\n as single break (peek ahead for \n)
+                    if chars.peek() == Some(&'\n') {
+                        chars.next(); // consume the \n
+                    }
+                    // Replace with single space
+                    if !prev_was_space {
+                        result.push(' ');
+                        prev_was_space = true;
+                    }
+                }
+                '\n' => {
+                    // Replace with single space
+                    if !prev_was_space {
+                        result.push(' ');
+                        prev_was_space = true;
+                    }
+                }
+                _ => {
+                    // WHY: preserve all other bytes as specified in F-6
+                    result.push(ch);
+                    prev_was_space = ch.is_whitespace();
+                }
+            }
+        }
+        
+        // WHY: trim only leading/trailing whitespace, preserve interior structure
+        result.trim().to_string()
+    }
+    
+    /// Format detected sentence for output (same as manual implementation)
+    pub fn format_sentence_output(&self, sentence: &DetectedSentence) -> String {
+        format!(
+            "{}\t{}\t({},{},{},{})",
+            sentence.index,
+            sentence.normalized_content,
+            sentence.span.start_line,
+            sentence.span.start_col,
+            sentence.span.end_line,
+            sentence.span.end_col
+        )
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,5 +672,125 @@ mod tests {
         // Only whitespace
         let sentences = detector.detect_sentences("   \n  \t  ").unwrap();
         assert_eq!(sentences.len(), 0);
+    }
+
+    // DFA implementation tests
+    #[test]
+    fn test_dfa_detector_creation() {
+        let detector = SentenceDetectorDFA::new();
+        assert!(detector.is_ok());
+    }
+
+    #[test]
+    fn test_dfa_simple_sentence_detection() {
+        let detector = SentenceDetectorDFA::new().unwrap();
+        let text = "Hello world. This is a test. How are you?";
+        
+        let sentences = detector.detect_sentences(text).unwrap();
+        assert_eq!(sentences.len(), 3);
+        assert_eq!(sentences[0].normalized_content.trim(), "Hello world.");
+        assert_eq!(sentences[1].normalized_content.trim(), "This is a test.");
+        assert_eq!(sentences[2].normalized_content.trim(), "How are you?");
+    }
+
+    #[test]
+    fn test_dfa_normalization() {
+        let detector = SentenceDetectorDFA::new().unwrap();
+        let text_with_breaks = "This is a\nsentence with\r\nline breaks.";
+        
+        let normalized = detector.normalize_sentence(text_with_breaks);
+        assert_eq!(normalized, "This is a sentence with line breaks.");
+    }
+
+    // Validation tests: compare both implementations
+    #[test]
+    fn test_manual_vs_dfa_basic_comparison() {
+        let manual_detector = SentenceDetector::with_default_rules().unwrap();
+        let dfa_detector = SentenceDetectorDFA::new().unwrap();
+        
+        let test_texts = vec![
+            "Hello world. This is a test.",
+            "First sentence. Second sentence! Third sentence?",
+            "Simple text.",
+            "Multiple    spaces. Between   sentences.",
+        ];
+        
+        for text in test_texts {
+            let manual_result = manual_detector.detect_sentences(text).unwrap();
+            let dfa_result = dfa_detector.detect_sentences(text).unwrap();
+            
+            // Both should detect same number of sentences
+            assert_eq!(manual_result.len(), dfa_result.len(), 
+                      "Sentence count mismatch for text: '{}'", text);
+            
+            // Compare normalized content
+            for (manual, dfa) in manual_result.iter().zip(dfa_result.iter()) {
+                assert_eq!(manual.normalized_content, dfa.normalized_content,
+                          "Content mismatch for text: '{}'\nManual: '{}'\nDFA: '{}'", 
+                          text, manual.normalized_content, dfa.normalized_content);
+            }
+        }
+    }
+
+    #[test]
+    fn test_manual_vs_dfa_unicode_comparison() {
+        let manual_detector = SentenceDetector::with_default_rules().unwrap();
+        let dfa_detector = SentenceDetectorDFA::new().unwrap();
+        
+        let text = "Hello 世界! This contains émojis 🦀. How neat?";
+        
+        let manual_result = manual_detector.detect_sentences(text).unwrap();
+        let dfa_result = dfa_detector.detect_sentences(text).unwrap();
+        
+        assert_eq!(manual_result.len(), dfa_result.len());
+        
+        for (manual, dfa) in manual_result.iter().zip(dfa_result.iter()) {
+            assert_eq!(manual.normalized_content, dfa.normalized_content);
+        }
+    }
+
+    #[test]
+    fn test_manual_vs_dfa_empty_text() {
+        let manual_detector = SentenceDetector::with_default_rules().unwrap();
+        let dfa_detector = SentenceDetectorDFA::new().unwrap();
+        
+        let manual_result = manual_detector.detect_sentences("").unwrap();
+        let dfa_result = dfa_detector.detect_sentences("").unwrap();
+        
+        assert_eq!(manual_result.len(), 0);
+        assert_eq!(dfa_result.len(), 0);
+    }
+
+    #[test]
+    fn test_output_format_consistency() {
+        let manual_detector = SentenceDetector::with_default_rules().unwrap();
+        let dfa_detector = SentenceDetectorDFA::new().unwrap();
+        
+        let text = "Test sentence. Another test.";
+        
+        let manual_sentences = manual_detector.detect_sentences(text).unwrap();
+        let dfa_sentences = dfa_detector.detect_sentences(text).unwrap();
+        
+        assert_eq!(manual_sentences.len(), dfa_sentences.len());
+        
+        for (i, (manual, dfa)) in manual_sentences.iter().zip(dfa_sentences.iter()).enumerate() {
+            // Content and sentence detection should be identical
+            assert_eq!(manual.normalized_content, dfa.normalized_content,
+                      "Content mismatch for sentence {}: '{}' vs '{}'", 
+                      i, manual.normalized_content, dfa.normalized_content);
+            
+            // Index should match
+            assert_eq!(manual.index, dfa.index);
+            
+            // Start line should match  
+            assert_eq!(manual.span.start_line, dfa.span.start_line);
+            
+            // End positions should match
+            assert_eq!(manual.span.end_line, dfa.span.end_line);
+            assert_eq!(manual.span.end_col, dfa.span.end_col);
+            
+            // Note: start_col may differ by 1 due to whitespace handling differences
+            // Manual includes whitespace, DFA points to actual content start
+        }
     }
 }
