@@ -1,6 +1,9 @@
 use anyhow::Result;
 use clap::Parser;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use tokio::fs::File;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tracing::info;
@@ -16,8 +19,114 @@ fn generate_aux_file_path(source_path: &Path) -> PathBuf {
     let file_stem = aux_path.file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
-    aux_path.set_file_name(format!("{}_rs_sft_sentences.txt", file_stem));
+    aux_path.set_file_name(format!("{file_stem}_rs_sft_sentences.txt"));
     aux_path
+}
+
+/// Cache for tracking completed auxiliary files
+/// WHY: Provides robust incremental processing by tracking completion timestamps
+#[derive(Serialize, Deserialize, Debug, Default)]
+struct ProcessingCache {
+    /// Map from source file path to completion timestamp (seconds since epoch)
+    completed_files: HashMap<String, u64>,
+}
+
+impl ProcessingCache {
+    /// Load cache from file, returns empty cache if file doesn't exist or is corrupted
+    /// WHY: Fail-safe approach - missing/corrupted cache just means reprocessing everything
+    async fn load(cache_path: &Path) -> Self {
+        if !cache_path.exists() {
+            return Self::default();
+        }
+        
+        match tokio::fs::read_to_string(cache_path).await {
+            Ok(content) => {
+                match serde_json::from_str(&content) {
+                    Ok(cache) => cache,
+                    Err(e) => {
+                        info!("Cache file corrupted, starting fresh: {}", e);
+                        Self::default()
+                    }
+                }
+            }
+            Err(e) => {
+                info!("Could not read cache file, starting fresh: {}", e);
+                Self::default()
+            }
+        }
+    }
+    
+    /// Save cache to file
+    /// WHY: Persist completion state for future runs
+    async fn save(&self, cache_path: &Path) -> Result<()> {
+        let content = serde_json::to_string_pretty(self)?;
+        tokio::fs::write(cache_path, content).await?;
+        Ok(())
+    }
+    
+    /// Check if source file has been processed and aux file is still valid
+    /// WHY: Core incremental logic - compare source modification time vs completion time
+    async fn is_file_processed(&self, source_path: &Path) -> Result<bool> {
+        let source_path_str = source_path.to_string_lossy().to_string();
+        
+        if let Some(&completion_timestamp) = self.completed_files.get(&source_path_str) {
+            // Check if source file has been modified since completion
+            let source_metadata = tokio::fs::metadata(source_path).await?;
+            let source_modified = source_metadata.modified()?
+                .duration_since(SystemTime::UNIX_EPOCH)?
+                .as_secs();
+            
+            // Also verify aux file still exists
+            let aux_path = generate_aux_file_path(source_path);
+            if !aux_path.exists() {
+                info!("Aux file missing for {}, reprocessing", source_path.display());
+                return Ok(false);
+            }
+            
+            Ok(source_modified <= completion_timestamp)
+        } else {
+            Ok(false)
+        }
+    }
+    
+    /// Mark file as completed with current timestamp
+    /// WHY: Record successful completion for future incremental runs
+    fn mark_completed(&mut self, source_path: &Path) {
+        let source_path_str = source_path.to_string_lossy().to_string();
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        self.completed_files.insert(source_path_str, now);
+    }
+}
+
+/// Generate cache file path for given root directory
+/// WHY: Consistent cache location that's easy to find and delete
+fn generate_cache_path(root_dir: &Path) -> PathBuf {
+    root_dir.join(".rs_sft_sentences_cache.json")
+}
+
+/// Determine if file should be processed based on cache and incremental rules
+/// WHY: Implements core F-9 logic using robust timestamp-based cache
+async fn should_process_file(source_path: &Path, cache: &ProcessingCache, overwrite_all: bool) -> Result<bool> {
+    if overwrite_all {
+        return Ok(true);
+    }
+    
+    let is_processed = cache.is_file_processed(source_path).await?;
+    
+    if is_processed {
+        info!("Skipping {} - already processed and up to date", source_path.display());
+        return Ok(false);
+    }
+    
+    let aux_path = generate_aux_file_path(source_path);
+    if aux_path.exists() {
+        info!("Processing {} - source newer than cache or aux file missing from cache", source_path.display());
+    }
+    
+    Ok(true)
 }
 
 /// Write sentences to auxiliary file in PRD F-7 format
@@ -131,6 +240,11 @@ async fn main() -> Result<()> {
     if !valid_files.is_empty() {
         info!("Starting async file reading for {} valid files", valid_files.len());
         
+        // WHY: Load processing cache for incremental processing
+        let cache_path = generate_cache_path(&args.root_dir);
+        let mut cache = ProcessingCache::load(&cache_path).await;
+        info!("Loaded processing cache from {}", cache_path.display());
+        
         let reader_config = reader::ReaderConfig {
             fail_fast: args.fail_fast,
             buffer_size: 8192,
@@ -152,6 +266,7 @@ async fn main() -> Result<()> {
         let mut total_sentences = 0u64;
         let mut successful_reads = 0;
         let mut failed_reads = 0;
+        let mut skipped_files = 0;
         
         for (lines, stats) in read_results {
             total_lines += stats.lines_read;
@@ -165,7 +280,25 @@ async fn main() -> Result<()> {
             } else {
                 successful_reads += 1;
                 
-                // WHY: process sentences only for successfully read files
+                // WHY: check if file should be processed based on cache and incremental rules
+                let source_path = Path::new(&stats.file_path);
+                let should_process = match should_process_file(source_path, &cache, args.overwrite_all).await {
+                    Ok(should_process) => should_process,
+                    Err(e) => {
+                        info!("Error checking if {} should be processed: {}", stats.file_path, e);
+                        if args.fail_fast {
+                            return Err(e);
+                        }
+                        true // Process on error to be safe
+                    }
+                };
+                
+                if !should_process {
+                    skipped_files += 1;
+                    continue;
+                }
+                
+                // WHY: process sentences only for files that should be processed
                 let file_content = lines.join("\n");
                 
                 match sentence_detector.detect_sentences(&file_content) {
@@ -176,12 +309,14 @@ async fn main() -> Result<()> {
                         info!("Detected {} sentences in {}", sentence_count, stats.file_path);
                         
                         // WHY: generate auxiliary file as per F-7 requirement
-                        let source_path = Path::new(&stats.file_path);
                         let aux_path = generate_aux_file_path(source_path);
                         
                         match write_auxiliary_file(&aux_path, &sentences, &sentence_detector).await {
                             Ok(()) => {
                                 info!("Successfully wrote auxiliary file: {}", aux_path.display());
+                                
+                                // WHY: mark file as completed in cache after successful aux file write
+                                cache.mark_completed(source_path);
                                 
                                 // WHY: demonstrate output format as per F-5 specification
                                 if sentence_count > 0 && sentence_count <= 3 {
@@ -213,7 +348,10 @@ async fn main() -> Result<()> {
         }
         
         println!("File processing complete:");
-        println!("  Successfully read: {successful_reads} files");
+        println!("  Successfully processed: {} files", successful_reads - skipped_files);
+        if skipped_files > 0 {
+            println!("  Skipped (complete aux files): {skipped_files} files");
+        }
         if failed_reads > 0 {
             println!("  Failed to read: {failed_reads} files");
         }
@@ -221,8 +359,16 @@ async fn main() -> Result<()> {
         println!("  Total bytes processed: {total_bytes}");
         println!("  Total sentences detected: {total_sentences}");
         
-        info!("File processing completed: {} successful, {} failed, {} sentences detected", 
-              successful_reads, failed_reads, total_sentences);
+        info!("File processing completed: {} processed, {} skipped, {} failed, {} sentences detected", 
+              successful_reads - skipped_files, skipped_files, failed_reads, total_sentences);
+              
+        // WHY: Save cache after processing to persist completion state for future runs
+        if let Err(e) = cache.save(&cache_path).await {
+            info!("Warning: Failed to save processing cache: {}", e);
+            // Don't fail the entire process if cache save fails
+        } else {
+            info!("Saved processing cache to {}", cache_path.display());
+        }
     }
     
     Ok(())
