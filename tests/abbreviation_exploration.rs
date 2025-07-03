@@ -3,7 +3,7 @@
 
 use std::time::Instant;
 use regex_automata::meta::Regex;
-use rs_sft_sentences::sentence_detector::SentenceDetectorDFA;
+use rs_sft_sentences::sentence_detector::{SentenceDetector, SentenceDetectorDFA};
 
 #[cfg(test)]
 mod abbreviation_tests {
@@ -30,9 +30,40 @@ mod abbreviation_tests {
             ("Distance is 2.5 mi. from here. We can walk it.", vec!["Distance is 2.5 mi. from here.", "We can walk it."]),
         ];
 
-        for (input, _expected) in scenarios {
-            println!("Testing narrative: {}", input);
-            // We'll implement detection functions here
+        println!("=== Testing Dictionary Post-Processing Strategy ===");
+        for (input, expected) in scenarios {
+            println!("\nInput: {}", input);
+            println!("Expected: {:?}", expected);
+            
+            // Test current production DFA (baseline)
+            let detector = SentenceDetectorDFA::new().unwrap();
+            let production_result = detector.detect_sentences(input).unwrap();
+            let production_sentences: Vec<String> = production_result.iter()
+                .map(|s| s.normalized_content.trim().to_string())
+                .collect();
+            println!("Production DFA: {:?}", production_sentences);
+            
+            // Test dictionary post-processing strategy
+            let dictionary_result = detect_sentences_dictionary_full(input).unwrap();
+            let dictionary_sentences: Vec<String> = dictionary_result.iter()
+                .map(|s| s.normalized_content.trim().to_string())
+                .collect();
+            println!("Dictionary Strategy: {:?}", dictionary_sentences);
+            
+            // Quality comparison
+            let production_correct = production_sentences == expected;
+            let dictionary_correct = dictionary_sentences == expected;
+            println!("Production correct: {}, Dictionary correct: {}", production_correct, dictionary_correct);
+            
+            if dictionary_correct && !production_correct {
+                println!("✅ IMPROVEMENT: Dictionary strategy fixes abbreviation splitting");
+            } else if !dictionary_correct && production_correct {
+                println!("❌ REGRESSION: Dictionary strategy breaks correct behavior");
+            } else if dictionary_correct && production_correct {
+                println!("➖ NO CHANGE: Both strategies work correctly");
+            } else {
+                println!("❌ BOTH WRONG: Neither strategy handles this case correctly");
+            }
         }
     }
 
@@ -49,9 +80,40 @@ mod abbreviation_tests {
             ("'Meet me at 5 p.m. sharp,' he said. The appointment was set.", vec!["'Meet me at 5 p.m. sharp,' he said.", "The appointment was set."]),
         ];
 
-        for (input, _expected) in scenarios {
-            println!("Testing dialog: {}", input);
-            // We'll implement detection functions here
+        println!("\n=== Testing Dialog Support Comparison ===");
+        for (input, expected) in scenarios {
+            println!("\nInput: {}", input);
+            println!("Expected: {:?}", expected);
+            
+            // Test manual detector (full feature support baseline)
+            let manual_detector = SentenceDetector::with_default_rules().unwrap();
+            let manual_result = manual_detector.detect_sentences(input).unwrap();
+            let manual_sentences: Vec<String> = manual_result.iter()
+                .map(|s| s.normalized_content.trim().to_string())
+                .collect();
+            println!("Manual Detector: {:?}", manual_sentences);
+            
+            // Test current DFA (simple pattern only)
+            let dfa_detector = SentenceDetectorDFA::new().unwrap();
+            let dfa_result = dfa_detector.detect_sentences(input).unwrap();
+            let dfa_sentences: Vec<String> = dfa_result.iter()
+                .map(|s| s.normalized_content.trim().to_string())
+                .collect();
+            println!("Current DFA: {:?}", dfa_sentences);
+            
+            // Test enhanced dictionary strategy (with dialog support)
+            let enhanced_result = detect_sentences_dictionary_enhanced(input).unwrap();
+            let enhanced_sentences: Vec<String> = enhanced_result.iter()
+                .map(|s| s.normalized_content.trim().to_string())
+                .collect();
+            println!("Enhanced Dictionary: {:?}", enhanced_sentences);
+            
+            // Quality comparison
+            let manual_correct = manual_sentences == expected;
+            let dfa_correct = dfa_sentences == expected;
+            let enhanced_correct = enhanced_sentences == expected;
+            
+            println!("Manual: {}, DFA: {}, Enhanced: {}", manual_correct, dfa_correct, enhanced_correct);
         }
     }
 
@@ -164,6 +226,172 @@ fn detect_sentences_dictionary(text: &str) -> Result<usize, Box<dyn std::error::
     }
     
     Ok(sentence_count)
+}
+
+// Dictionary Post-Processing Strategy - Full Implementation
+// WHY: Returns complete DetectedSentence objects for quality comparison with production DFA
+// Trade-off: More memory allocation but enables proper sentence boundary analysis
+fn detect_sentences_dictionary_full(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
+    let abbreviations = [
+        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
+        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
+        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
+        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
+    ];
+    
+    // Phase 1: Find all potential sentence boundaries using simple pattern
+    let pattern = Regex::new(r"[.!?]\s+[A-Z]").unwrap();
+    
+    let mut sentences = Vec::new();
+    let mut sentence_index = 0;
+    let mut last_start = 0;
+    
+    for mat in pattern.find_iter(text) {
+        let potential_end = mat.start() + 1; // Position after the punctuation
+        let preceding_text = &text[last_start..potential_end];
+        
+        // Phase 2: Check if this ends with a known abbreviation
+        let is_abbreviation = abbreviations.iter().any(|abbrev| {
+            preceding_text.trim_end().ends_with(abbrev)
+        });
+        
+        if !is_abbreviation {
+            // This is a real sentence boundary
+            let sentence_text = &text[last_start..potential_end];
+            
+            // Simple position calculation - just use 1-based line/col
+            // WHY: Focus on correctness comparison rather than exact span calculation
+            sentences.push(rs_sft_sentences::DetectedSentence {
+                index: sentence_index,
+                normalized_content: sentence_text.to_string(),
+                span: rs_sft_sentences::Span {
+                    start_line: 1,
+                    start_col: last_start + 1,
+                    end_line: 1,
+                    end_col: potential_end + 1,
+                },
+            });
+            sentence_index += 1;
+            
+            // Skip whitespace to start of next sentence
+            let next_start = mat.end() - 1; // Position after the space
+            last_start = text[next_start..].chars()
+                .position(|c| !c.is_whitespace())
+                .map(|pos| next_start + pos)
+                .unwrap_or(text.len());
+        }
+    }
+    
+    // Add final sentence if there's remaining text
+    if last_start < text.len() {
+        let final_text = &text[last_start..];
+        if !final_text.trim().is_empty() {
+            sentences.push(rs_sft_sentences::DetectedSentence {
+                index: sentence_index,
+                normalized_content: final_text.to_string(),
+                span: rs_sft_sentences::Span {
+                    start_line: 1,
+                    start_col: last_start + 1,
+                    end_line: 1,
+                    end_col: text.len() + 1,
+                },
+            });
+        }
+    }
+    
+    Ok(sentences)
+}
+
+// Enhanced Dictionary Strategy - Full Feature Support
+// WHY: Matches manual detector functionality while adding abbreviation filtering
+// Trade-off: More complex pattern matching but equivalent feature set to manual detector
+fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
+    let abbreviations = [
+        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
+        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
+        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
+        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
+    ];
+    
+    // Enhanced patterns to match manual detector functionality
+    // WHY: Support same dialog and parenthetical patterns as SentenceBoundaryRules::default()
+    let enhanced_patterns = [
+        // Basic: [.!?]\s+[A-Z]
+        r"[.!?]\s+[A-Z]",
+        // Dialog patterns: [.!?]['"\u{201D}\u{2019}]\s+[A-Z]
+        r#"[.!?]['"\u{201D}\u{2019}]\s+[A-Z]"#,
+        // Quote starts: [.!?]\s+['"\u{201C}\u{2018}]
+        r#"[.!?]\s+['"\u{201C}\u{2018}]"#,
+        // Parenthetical starts: [.!?]\s+[({\[]
+        r"[.!?]\s+[({\[]",
+    ];
+    
+    let mut sentences = Vec::new();
+    let mut sentence_index = 0;
+    let mut last_start = 0;
+    
+    // Combine all patterns into a single regex
+    let combined_pattern = enhanced_patterns.join("|");
+    let pattern = Regex::new(&combined_pattern).unwrap();
+    
+    for mat in pattern.find_iter(text) {
+        // Find the punctuation position (always first character of the match)
+        let potential_end = mat.start() + 1; // Position after the punctuation
+        let preceding_text = &text[last_start..potential_end];
+        
+        // Phase 2: Check if this ends with a known abbreviation
+        let is_abbreviation = abbreviations.iter().any(|abbrev| {
+            preceding_text.trim_end().ends_with(abbrev)
+        });
+        
+        if !is_abbreviation {
+            // This is a real sentence boundary
+            let sentence_text = &text[last_start..potential_end];
+            
+            sentences.push(rs_sft_sentences::DetectedSentence {
+                index: sentence_index,
+                normalized_content: sentence_text.to_string(),
+                span: rs_sft_sentences::Span {
+                    start_line: 1,
+                    start_col: last_start + 1,
+                    end_line: 1,
+                    end_col: potential_end + 1,
+                },
+            });
+            sentence_index += 1;
+            
+            // Find start of next sentence (skip whitespace and quotes/parens)
+            let mut next_start = mat.start() + 1; // After punctuation
+            while next_start < text.len() {
+                let ch = text.chars().nth(next_start).unwrap_or('\0');
+                if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == '(' || ch == '[' || ch == '{' {
+                    next_start += 1;
+                } else {
+                    break;
+                }
+            }
+            last_start = next_start;
+        }
+    }
+    
+    // Add final sentence if there's remaining text
+    if last_start < text.len() {
+        let final_text = &text[last_start..];
+        if !final_text.trim().is_empty() {
+            sentences.push(rs_sft_sentences::DetectedSentence {
+                index: sentence_index,
+                normalized_content: final_text.to_string(),
+                span: rs_sft_sentences::Span {
+                    start_line: 1,
+                    start_col: last_start + 1,
+                    end_line: 1,
+                    end_col: text.len() + 1,
+                },
+            });
+        }
+    }
+    
+    Ok(sentences)
 }
 
 // Strategy 3: Context Analysis Approach
