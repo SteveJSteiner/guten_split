@@ -23,8 +23,9 @@ flowchart LR
 2.1 When drafting a task Claude must:
 	1.	Ensure atomic scope—it must pass tests in isolation.
 	2.	Keep active tasks in /tasks; move completed tasks to /completed_tasks/ during completion commit.
-	3.	Name the new task file <semantic-name>_<index>.md, where <semantic-name> is a concise, kebab-case description and <index> is a monotonically increasing integer (1, 2, 3, …) regardless of date.
+	3.	Name the new task file <semantic-name>_<index>.<username>.md, where <semantic-name> is a concise, kebab-case description, <index> is from /tasks/.next_id (increment after use), and <username> prevents multi-user conflicts.
 	4.	Commit message should begin with feat: / fix: / docs: etc., include a brief summary, and end with (see tasks/<file>).
+	5.	Task ID workflow: read next_id=$(cat tasks/.next_id), create task with that ID, then echo $((next_id + 1)) > tasks/.next_id
 
 ⸻
 

@@ -71,6 +71,13 @@
 ## Active Process Improvements
 
 ### High Priority
+- **Process**: Rename project before publishing
+- **Type**: Process Improvement
+- **Effort**: Small
+- **Prerequisites**: None
+- **Context**: Current name "guten_split" doesn't reflect sentence extraction purpose, needs better name before any publishing/sharing
+- **Acceptance**: Project renamed with updated Cargo.toml, README references, and repository name
+
 - **Process**: Task-to-commit automation tooling
 - **Type**: Process Improvement
 - **Effort**: Small
@@ -92,6 +99,7 @@
 - Process improvements and testing strategy (process-improvements-testing_5.md) - COMPLETED
 - PRD compliance validation framework - COMPLETED  
 - Context management guidelines - COMPLETED
+- Make discovering next_task_id simpler (next-task-id-discovery_13.stevejs.md) - COMPLETED
 
 ## Usage Guidelines
 
