@@ -68,6 +68,43 @@ mod abbreviation_tests {
     }
 
     #[test]
+    fn test_dialog_analysis() {
+        // Analyze the failing patterns to understand if 5/5 is achievable
+        let problem_cases = [
+            (
+                "He said, 'Dr. Smith will see you.' She nodded.",
+                "Issue: Abbreviation 'Dr.' inside dialog - should not split sentence"
+            ),
+            (
+                "John asked, 'Is Mr. Johnson here?' 'Yes,' came the reply.",
+                "Issue: Abbreviation 'Mr.' inside dialog + consecutive quotes"
+            ),
+            (
+                "She whispered, 'Prof. Davis is strict.' The class fell silent.",
+                "Issue: Abbreviation 'Prof.' inside dialog"
+            ),
+        ];
+
+        println!("=== Dialog Pattern Analysis ===");
+        for (input, issue) in problem_cases {
+            println!("\nCase: {}", input);
+            println!("Problem: {}", issue);
+            
+            // Test if we can detect dialog context to avoid splitting on abbreviations
+            let has_dialog_context = input.contains("'") && (input.contains(" said") || input.contains(" asked") || input.contains(" whispered"));
+            println!("Has dialog context: {}", has_dialog_context);
+            
+            // Show where current patterns are splitting
+            let manual_detector = SentenceDetector::with_default_rules().unwrap();
+            let manual_result = manual_detector.detect_sentences(input).unwrap();
+            let manual_sentences: Vec<String> = manual_result.iter()
+                .map(|s| s.normalized_content.trim().to_string())
+                .collect();
+            println!("Manual splits at: {:?}", manual_sentences);
+        }
+    }
+
+    #[test]
     fn test_dialog_context_scenarios() {
         let scenarios = [
             // Dialog with abbreviations
@@ -108,12 +145,21 @@ mod abbreviation_tests {
                 .collect();
             println!("Enhanced Dictionary: {:?}", enhanced_sentences);
             
+            // Test forward-probing strategy 
+            let forward_probe_result = detect_sentences_dictionary_forward_probe(input).unwrap();
+            let forward_probe_sentences: Vec<String> = forward_probe_result.iter()
+                .map(|s| s.normalized_content.trim().to_string())
+                .collect();
+            println!("Forward Probe: {:?}", forward_probe_sentences);
+            
             // Quality comparison
             let manual_correct = manual_sentences == expected;
             let dfa_correct = dfa_sentences == expected;
             let enhanced_correct = enhanced_sentences == expected;
+            let forward_probe_correct = forward_probe_sentences == expected;
             
-            println!("Manual: {}, DFA: {}, Enhanced: {}", manual_correct, dfa_correct, enhanced_correct);
+            println!("Manual: {}, DFA: {}, Enhanced: {}, Forward Probe: {}", 
+                    manual_correct, dfa_correct, enhanced_correct, forward_probe_correct);
         }
     }
 
@@ -302,10 +348,9 @@ fn detect_sentences_dictionary_full(text: &str) -> Result<Vec<rs_sft_sentences::
     Ok(sentences)
 }
 
-// Enhanced Dictionary Strategy - Full Feature Support
-// WHY: Matches manual detector functionality while adding abbreviation filtering
-// Trade-off: More complex pattern matching but equivalent feature set to manual detector
-fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
+// Forward-Probing Dictionary Strategy - Proper Dialog Handling  
+// WHY: Probes forward to find matching quote close, avoiding abbreviation splits inside dialog
+fn detect_sentences_dictionary_forward_probe(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
     let abbreviations = [
         "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
         "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
@@ -313,40 +358,56 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentenc
         "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
     ];
     
-    // Enhanced patterns to match manual detector functionality
-    // WHY: Support same dialog and parenthetical patterns as SentenceBoundaryRules::default()
-    let enhanced_patterns = [
-        // Basic: [.!?]\s+[A-Z]
-        r"[.!?]\s+[A-Z]",
-        // Dialog patterns: [.!?]['"\u{201D}\u{2019}]\s+[A-Z]
-        r#"[.!?]['"\u{201D}\u{2019}]\s+[A-Z]"#,
-        // Quote starts: [.!?]\s+['"\u{201C}\u{2018}]
-        r#"[.!?]\s+['"\u{201C}\u{2018}]"#,
-        // Parenthetical starts: [.!?]\s+[({\[]
-        r"[.!?]\s+[({\[]",
-    ];
+    // Use all dialog patterns
+    let basic_pattern = Regex::new(r"[.!?]\s+[A-Z]").unwrap();
+    let dialog_end_pattern = Regex::new(r#"[.!?]['"\u{201D}\u{2019}]\s+[A-Z]"#).unwrap();
+    let quote_start_pattern = Regex::new(r#"[.!?]\s+['"\u{201C}\u{2018}]"#).unwrap();
+    let paren_start_pattern = Regex::new(r"[.!?]\s+[({\[]").unwrap();
+    
+    let mut boundaries = Vec::new();
+    
+    for mat in basic_pattern.find_iter(text) {
+        boundaries.push((mat.start(), mat.end(), "basic"));
+    }
+    for mat in dialog_end_pattern.find_iter(text) {
+        boundaries.push((mat.start(), mat.end(), "dialog_end"));
+    }
+    for mat in quote_start_pattern.find_iter(text) {
+        boundaries.push((mat.start(), mat.end(), "quote_start"));
+    }
+    for mat in paren_start_pattern.find_iter(text) {
+        boundaries.push((mat.start(), mat.end(), "paren_start"));
+    }
+    
+    boundaries.sort_by_key(|&(start, _, _)| start);
+    boundaries.dedup_by_key(|&mut (start, _, _)| start);
     
     let mut sentences = Vec::new();
     let mut sentence_index = 0;
     let mut last_start = 0;
     
-    // Combine all patterns into a single regex
-    let combined_pattern = enhanced_patterns.join("|");
-    let pattern = Regex::new(&combined_pattern).unwrap();
-    
-    for mat in pattern.find_iter(text) {
-        // Find the punctuation position (always first character of the match)
-        let potential_end = mat.start() + 1; // Position after the punctuation
+    for (boundary_start, _boundary_end, boundary_type) in boundaries {
+        let potential_end = find_punctuation_end(text, boundary_start);
         let preceding_text = &text[last_start..potential_end];
         
-        // Phase 2: Check if this ends with a known abbreviation
+        // Check if this ends with an abbreviation
         let is_abbreviation = abbreviations.iter().any(|abbrev| {
             preceding_text.trim_end().ends_with(abbrev)
         });
         
         if !is_abbreviation {
-            // This is a real sentence boundary
-            let sentence_text = &text[last_start..potential_end];
+            // For basic boundaries, check if we're splitting inside dialog
+            let mut actual_end = potential_end;
+            
+            if boundary_type == "basic" {
+                // Probe forward to see if this might be inside dialog
+                if let Some(dialog_end) = find_matching_dialog_close(text, boundary_start) {
+                    // We're inside dialog - extend to the dialog close
+                    actual_end = dialog_end;
+                }
+            }
+            
+            let sentence_text = &text[last_start..actual_end];
             
             sentences.push(rs_sft_sentences::DetectedSentence {
                 index: sentence_index,
@@ -355,22 +416,13 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentenc
                     start_line: 1,
                     start_col: last_start + 1,
                     end_line: 1,
-                    end_col: potential_end + 1,
+                    end_col: actual_end + 1,
                 },
             });
             sentence_index += 1;
             
-            // Find start of next sentence (skip whitespace and quotes/parens)
-            let mut next_start = mat.start() + 1; // After punctuation
-            while next_start < text.len() {
-                let ch = text.chars().nth(next_start).unwrap_or('\0');
-                if ch.is_whitespace() || ch == '"' || ch == '\'' || ch == '(' || ch == '[' || ch == '{' {
-                    next_start += 1;
-                } else {
-                    break;
-                }
-            }
-            last_start = next_start;
+            // Move past the actual sentence end
+            last_start = find_next_sentence_start(text, actual_end);
         }
     }
     
@@ -394,60 +446,432 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentenc
     Ok(sentences)
 }
 
-// Strategy 3: Context Analysis Approach
-fn detect_sentences_context(text: &str) -> Vec<String> {
-    // WHY: Analyzes patterns around periods to distinguish abbreviations from sentence ends
-    // Trade-off: Most sophisticated but potentially slowest approach
+// Helper function to find matching dialog close by probing forward
+fn find_matching_dialog_close(text: &str, boundary_pos: usize) -> Option<usize> {
+    // Look backwards to find if we're after an opening quote
+    let before = &text[..boundary_pos];
+    let mut quote_pos = None;
+    let quote_chars = ['\'', '"', '\u{201C}', '\u{2018}'];
     
-    let mut sentences = Vec::new();
-    let mut last_end = 0;
-    let chars: Vec<char> = text.chars().collect();
-    
-    for (i, &ch) in chars.iter().enumerate() {
+    // Find the most recent opening quote before the boundary
+    for (i, ch) in before.char_indices().rev() {
+        if quote_chars.contains(&ch) {
+            quote_pos = Some(i);
+            break;
+        }
+        // Stop if we hit sentence-ending punctuation (we've gone too far back)
         if matches!(ch, '.' | '!' | '?') {
-            // Look ahead for space + capital letter
-            if i + 2 < chars.len() && chars[i + 1].is_whitespace() && chars[i + 2].is_uppercase() {
-                // Look behind for abbreviation indicators
-                let is_abbreviation = if i >= 3 {
-                    // Check for pattern: Letter + period + space + lowercase (like "Dr. smith")
-                    let prev_chars = &chars[i.saturating_sub(3)..i];
-                    prev_chars.len() >= 2 && 
-                    prev_chars[prev_chars.len()-1].is_alphabetic() &&
-                    prev_chars.iter().any(|&c| c.is_uppercase()) &&
-                    prev_chars.len() <= 4 // Typical abbreviation length
-                } else {
-                    false
-                };
-                
-                if !is_abbreviation {
-                    let sentence_end = i + 1;
-                    let sentence: String = chars[last_end..sentence_end].iter().collect();
-                    sentences.push(sentence);
-                    last_end = i + 2; // Skip the space
+            break;
+        }
+    }
+    
+    if let Some(open_pos) = quote_pos {
+        let opening_char = text.chars().nth(text[..open_pos].chars().count()).unwrap();
+        let closing_char = match opening_char {
+            '\'' => '\'',
+            '"' => '"', 
+            '\u{201C}' => '\u{201D}', // " -> "
+            '\u{2018}' => '\u{2019}', // ' -> '
+            _ => return None,
+        };
+        
+        // Probe forward from boundary to find matching close
+        let after = &text[boundary_pos..];
+        for (offset, ch) in after.char_indices() {
+            if ch == closing_char {
+                // Found matching close - look for sentence end after the quote
+                let after_quote = &after[offset + ch.len_utf8()..];
+                for (quote_offset, quote_ch) in after_quote.char_indices() {
+                    if matches!(quote_ch, '.' | '!' | '?') {
+                        return Some(boundary_pos + offset + ch.len_utf8() + quote_offset + quote_ch.len_utf8());
+                    }
+                    if !quote_ch.is_whitespace() {
+                        break;
+                    }
                 }
+                // No punctuation after quote, treat quote as sentence end
+                return Some(boundary_pos + offset + ch.len_utf8());
+            }
+            // Stop if we hit another sentence boundary
+            if matches!(ch, '.' | '!' | '?') && after.chars().nth(offset + 1).map_or(false, |c| c.is_whitespace()) {
+                break;
             }
         }
     }
     
-    if last_end < chars.len() {
-        let final_sentence: String = chars[last_end..].iter().collect();
-        sentences.push(final_sentence);
-    }
-    
-    sentences
+    None
 }
 
-// Strategy 4: Multi-Pattern DFA Approach (placeholder)
-fn detect_sentences_multipattern(text: &str) -> Result<usize, Box<dyn std::error::Error>> {
-    // WHY: Uses regex-automata with multiple patterns for different contexts
-    // Trade-off: Most complex to implement but potentially highest performance
+// Enhanced Dictionary Strategy - Full Feature Support
+// WHY: Matches manual detector functionality while adding abbreviation filtering
+// Trade-off: More complex pattern matching but equivalent feature set to manual detector
+fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
+    let abbreviations = [
+        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
+        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
+        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
+        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
+    ];
     
-    // This would use regex_automata::multi::MultiBuilder with separate patterns
-    // Pattern 0: Narrative sentence boundaries  
-    // Pattern 1: Dialog sentence boundaries
-    // For now, use simple fallback
+    // Use separate patterns to handle each boundary type correctly
+    // WHY: Avoids UTF-8 character boundary issues by processing patterns individually
+    let basic_pattern = Regex::new(r"[.!?]\s+[A-Z]").unwrap();
+    let dialog_end_pattern = Regex::new(r#"[.!?]['"\u{201D}\u{2019}]\s+[A-Z]"#).unwrap();
+    let quote_start_pattern = Regex::new(r#"[.!?]\s+['"\u{201C}\u{2018}]"#).unwrap();
+    let paren_start_pattern = Regex::new(r"[.!?]\s+[({\[]").unwrap();
     
-    detect_sentences_lookbehind(text)
+    // Collect all potential boundaries with their types
+    let mut boundaries = Vec::new();
+    
+    // Find all boundary types
+    for mat in basic_pattern.find_iter(text) {
+        boundaries.push((mat.start(), mat.end(), "basic"));
+    }
+    for mat in dialog_end_pattern.find_iter(text) {
+        boundaries.push((mat.start(), mat.end(), "dialog_end"));
+    }
+    for mat in quote_start_pattern.find_iter(text) {
+        boundaries.push((mat.start(), mat.end(), "quote_start"));
+    }
+    for mat in paren_start_pattern.find_iter(text) {
+        boundaries.push((mat.start(), mat.end(), "paren_start"));
+    }
+    
+    // Sort by position and remove duplicates (same boundary matched by multiple patterns)
+    boundaries.sort_by_key(|&(start, _, _)| start);
+    boundaries.dedup_by_key(|&mut (start, _, _)| start);
+    
+    let mut sentences = Vec::new();
+    let mut sentence_index = 0;
+    let mut last_start = 0;
+    
+    for (boundary_start, boundary_end, boundary_type) in boundaries {
+        // Find the punctuation position using UTF-8 safe approach
+        let potential_end = find_punctuation_end(text, boundary_start);
+        let preceding_text = &text[last_start..potential_end];
+        
+        // Phase 2: Check if this ends with a known abbreviation
+        let is_abbreviation = abbreviations.iter().any(|abbrev| {
+            preceding_text.trim_end().ends_with(abbrev)
+        });
+        
+        if !is_abbreviation {
+            // This is a real sentence boundary
+            let sentence_text = &text[last_start..potential_end];
+            
+            sentences.push(rs_sft_sentences::DetectedSentence {
+                index: sentence_index,
+                normalized_content: sentence_text.to_string(),
+                span: rs_sft_sentences::Span {
+                    start_line: 1,
+                    start_col: last_start + 1,
+                    end_line: 1,
+                    end_col: potential_end + 1,
+                },
+            });
+            sentence_index += 1;
+            
+            // Find start of next sentence based on boundary type
+            last_start = match boundary_type {
+                "basic" => {
+                    // Skip punctuation and whitespace to find capital letter
+                    find_next_sentence_start(text, boundary_start + 1)
+                },
+                "dialog_end" => {
+                    // Skip punctuation, quote, and whitespace to find capital letter
+                    find_next_sentence_start(text, boundary_start + 1)
+                },
+                "quote_start" | "paren_start" => {
+                    // Skip punctuation and whitespace, start includes the quote/paren
+                    find_quote_or_paren_start(text, boundary_start + 1)
+                },
+                _ => find_next_sentence_start(text, boundary_start + 1),
+            };
+        }
+    }
+    
+    // Add final sentence if there's remaining text
+    if last_start < text.len() {
+        let final_text = &text[last_start..];
+        if !final_text.trim().is_empty() {
+            sentences.push(rs_sft_sentences::DetectedSentence {
+                index: sentence_index,
+                normalized_content: final_text.to_string(),
+                span: rs_sft_sentences::Span {
+                    start_line: 1,
+                    start_col: last_start + 1,
+                    end_line: 1,
+                    end_col: text.len() + 1,
+                },
+            });
+        }
+    }
+    
+    Ok(sentences)
+}
+
+// Helper function to find next sentence start after punctuation and whitespace
+fn find_next_sentence_start(text: &str, start_pos: usize) -> usize {
+    let mut char_indices = text[start_pos..].char_indices();
+    
+    // Skip whitespace
+    while let Some((byte_offset, ch)) = char_indices.next() {
+        if !ch.is_whitespace() {
+            return start_pos + byte_offset;
+        }
+    }
+    text.len()
+}
+
+// Helper function to find start of quoted or parenthetical content
+fn find_quote_or_paren_start(text: &str, start_pos: usize) -> usize {
+    let mut char_indices = text[start_pos..].char_indices();
+    
+    // Skip whitespace to find the quote or parenthesis
+    while let Some((byte_offset, ch)) = char_indices.next() {
+        if !ch.is_whitespace() {
+            return start_pos + byte_offset;
+        }
+    }
+    text.len()
+}
+
+// Helper function to find punctuation end position using UTF-8 safe approach
+fn find_punctuation_end(text: &str, boundary_start: usize) -> usize {
+    let mut char_indices = text[boundary_start..].char_indices();
+    
+    // Find the first character (punctuation) and return position after it
+    if let Some((_, ch)) = char_indices.next() {
+        if let Some((next_byte_offset, _)) = char_indices.next() {
+            boundary_start + next_byte_offset
+        } else {
+            // Last character in text
+            text.len()
+        }
+    } else {
+        // Edge case: boundary_start is at end of text
+        text.len()
+    }
+}
+
+// Strategy 3: Context Analysis Approach - Full Implementation
+// WHY: Deep context analysis around punctuation marks with sophisticated abbreviation detection
+// Trade-off: Most complex logic but potentially highest accuracy on edge cases
+#[cfg_attr(test, allow(dead_code))]
+fn detect_sentences_context_full(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
+    let abbreviations = [
+        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
+        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
+        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
+        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
+    ];
+    
+    let mut sentences = Vec::new();
+    let mut sentence_index = 0;
+    let mut last_start = 0;
+    let chars: Vec<char> = text.chars().collect();
+    
+    let mut i = 0;
+    while i < chars.len() {
+        if matches!(chars[i], '.' | '!' | '?') {
+            // Look ahead for valid sentence boundary patterns
+            if i + 2 < chars.len() && chars[i + 1].is_whitespace() {
+                let next_char = chars[i + 2];
+                let is_sentence_start = next_char.is_uppercase() || 
+                                      matches!(next_char, '"' | '\'' | '(' | '[');
+                
+                if is_sentence_start {
+                    // Advanced context analysis for abbreviations
+                    let is_abbreviation = analyze_abbreviation_context(&chars, i, &abbreviations);
+                    
+                    if !is_abbreviation {
+                        // Extract sentence
+                        let sentence_text: String = chars[last_start..=i].iter().collect();
+                        
+                        sentences.push(rs_sft_sentences::DetectedSentence {
+                            index: sentence_index,
+                            normalized_content: sentence_text.trim().to_string(),
+                            span: rs_sft_sentences::Span {
+                                start_line: 1,
+                                start_col: last_start + 1,
+                                end_line: 1,
+                                end_col: i + 2,
+                            },
+                        });
+                        sentence_index += 1;
+                        
+                        // Skip to start of next sentence
+                        last_start = i + 2;
+                        while last_start < chars.len() && chars[last_start].is_whitespace() {
+                            last_start += 1;
+                        }
+                        i = last_start.saturating_sub(1); // Will be incremented at end of loop
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    
+    // Add final sentence
+    if last_start < chars.len() {
+        let final_text: String = chars[last_start..].iter().collect();
+        if !final_text.trim().is_empty() {
+            sentences.push(rs_sft_sentences::DetectedSentence {
+                index: sentence_index,
+                normalized_content: final_text.trim().to_string(),
+                span: rs_sft_sentences::Span {
+                    start_line: 1,
+                    start_col: last_start + 1,
+                    end_line: 1,
+                    end_col: chars.len() + 1,
+                },
+            });
+        }
+    }
+    
+    Ok(sentences)
+}
+
+// Advanced abbreviation detection using multiple context clues
+#[cfg_attr(test, allow(dead_code))]
+fn analyze_abbreviation_context(chars: &[char], punct_pos: usize, abbreviations: &[&str]) -> bool {
+    // Convert to string for abbreviation matching
+    let start_pos = if punct_pos >= 10 { punct_pos - 10 } else { 0 };
+    let context: String = chars[start_pos..=punct_pos].iter().collect();
+    
+    // Direct abbreviation match
+    if abbreviations.iter().any(|abbrev| context.ends_with(abbrev)) {
+        return true;
+    }
+    
+    // Pattern-based detection
+    if punct_pos >= 3 {
+        let before_punct = &chars[punct_pos.saturating_sub(3)..punct_pos];
+        
+        // Short word + period pattern (likely abbreviation)
+        if before_punct.len() <= 3 && before_punct.iter().all(|&c| c.is_alphabetic()) {
+            return true;
+        }
+        
+        // Single letter + period pattern (initials)
+        if before_punct.len() == 1 && before_punct[0].is_uppercase() {
+            return true;
+        }
+        
+        // Multiple periods pattern (like "U.S.A.")
+        if punct_pos >= 4 && chars[punct_pos - 2] == '.' {
+            return true;
+        }
+    }
+    
+    false
+}
+
+// Strategy 4: Multi-Pattern DFA Approach - High Performance Implementation
+// WHY: Uses regex-automata multi-pattern DFA for maximum throughput
+// Trade-off: Complex setup but potentially approaching 1GB/s performance
+#[cfg_attr(test, allow(dead_code))]
+fn detect_sentences_multipattern_full(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
+    use regex_automata::multi::MultiBuilder;
+    
+    let abbreviations = [
+        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
+        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
+        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
+        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
+    ];
+    
+    // Build multi-pattern DFA with different pattern types
+    let patterns = vec![
+        r"[.!?]\s+[A-Z]",                    // Pattern 0: Basic boundaries
+        r#"[.!?]['"\u{201D}\u{2019}]\s+[A-Z]"#,  // Pattern 1: Dialog end
+        r#"[.!?]\s+['"\u{201C}\u{2018}]"#,       // Pattern 2: Quote start
+        r"[.!?]\s+[({\[]",                   // Pattern 3: Parenthetical
+    ];
+    
+    let multi = MultiBuilder::new()
+        .build_many(&patterns)
+        .map_err(|e| format!("Multi-pattern DFA build error: {:?}", e))?;
+    
+    let mut sentences = Vec::new();
+    let mut sentence_index = 0;
+    let mut last_start = 0;
+    let mut search_at = 0;
+    
+    while search_at < text.len() {
+        if let Some(match_result) = multi.find_at(text, search_at) {
+            let match_start = match_result.start();
+            let pattern_id = match_result.pattern();
+            
+            // Find the punctuation position (first char of match)
+            let punct_pos = match_start;
+            let potential_end = punct_pos + 1;
+            let preceding_text = &text[last_start..potential_end];
+            
+            // Check for abbreviations
+            let is_abbreviation = abbreviations.iter().any(|abbrev| {
+                preceding_text.trim_end().ends_with(abbrev)
+            });
+            
+            if !is_abbreviation {
+                let sentence_text = &text[last_start..potential_end];
+                
+                sentences.push(rs_sft_sentences::DetectedSentence {
+                    index: sentence_index,
+                    normalized_content: sentence_text.to_string(),
+                    span: rs_sft_sentences::Span {
+                        start_line: 1,
+                        start_col: last_start + 1,
+                        end_line: 1,
+                        end_col: potential_end + 1,
+                    },
+                });
+                sentence_index += 1;
+                
+                // Move to next sentence based on pattern type
+                last_start = match start_pattern_type(pattern_id) {
+                    "basic" | "dialog_end" => find_next_sentence_start(text, potential_end),
+                    "quote_start" | "paren_start" => find_quote_or_paren_start(text, potential_end),
+                    _ => find_next_sentence_start(text, potential_end),
+                };
+            }
+            
+            search_at = match_result.end();
+        } else {
+            break;
+        }
+    }
+    
+    // Add final sentence
+    if last_start < text.len() {
+        let final_text = &text[last_start..];
+        if !final_text.trim().is_empty() {
+            sentences.push(rs_sft_sentences::DetectedSentence {
+                index: sentence_index,
+                normalized_content: final_text.to_string(),
+                span: rs_sft_sentences::Span {
+                    start_line: 1,
+                    start_col: last_start + 1,
+                    end_line: 1,
+                    end_col: text.len() + 1,
+                },
+            });
+        }
+    }
+    
+    Ok(sentences)
+}
+
+#[cfg_attr(test, allow(dead_code))]
+fn start_pattern_type(pattern_id: regex_automata::PatternID) -> &'static str {
+    match pattern_id.as_usize() {
+        0 => "basic",
+        1 => "dialog_end", 
+        2 => "quote_start",
+        3 => "paren_start",
+        _ => "basic",
+    }
 }
 
 #[cfg(test)]

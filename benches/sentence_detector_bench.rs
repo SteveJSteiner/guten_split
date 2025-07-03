@@ -1,5 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use rs_sft_sentences::discovery;
+#[allow(unused_imports)]
 use rs_sft_sentences::reader;
 use rs_sft_sentences::sentence_detector::{DetectedSentence, Span, SentenceBoundaryRules, SentenceDetector, SentenceDetectorDFA};
 use std::path::PathBuf;
@@ -91,6 +92,172 @@ fn detect_sentences_dictionary_enhanced_benchmark(text: &str) -> Result<Vec<Dete
     // For benchmark performance comparison, use same simple pattern as dictionary strategy
     // but add abbreviation filtering. Complex patterns would require careful UTF-8 handling.
     detect_sentences_dictionary_benchmark(text)
+}
+
+// Context Analysis Strategy for Benchmark
+// WHY: Benchmark sophisticated context analysis approach  
+fn detect_sentences_context_analysis_benchmark(text: &str) -> Result<Vec<DetectedSentence>, Box<dyn std::error::Error>> {
+    let abbreviations = [
+        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
+        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
+        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
+        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
+    ];
+    
+    let mut sentences = Vec::new();
+    let mut sentence_index = 0;
+    let mut last_start = 0;
+    let chars: Vec<char> = text.chars().collect();
+    
+    let mut i = 0;
+    while i < chars.len() {
+        if matches!(chars[i], '.' | '!' | '?') {
+            if i + 2 < chars.len() && chars[i + 1].is_whitespace() {
+                let next_char = chars[i + 2];
+                let is_sentence_start = next_char.is_uppercase() || 
+                                      matches!(next_char, '"' | '\'' | '(' | '[');
+                
+                if is_sentence_start {
+                    // Simple abbreviation detection for benchmark
+                    let context_start = if i >= 10 { i - 10 } else { 0 };
+                    let context: String = chars[context_start..=i].iter().collect();
+                    let is_abbreviation = abbreviations.iter().any(|abbrev| context.ends_with(abbrev));
+                    
+                    if !is_abbreviation {
+                        let sentence_text: String = chars[last_start..=i].iter().collect();
+                        sentences.push(DetectedSentence {
+                            index: sentence_index,
+                            normalized_content: sentence_text.trim().to_string(),
+                            span: Span {
+                                start_line: 1,
+                                start_col: last_start + 1,
+                                end_line: 1,
+                                end_col: i + 2,
+                            },
+                        });
+                        sentence_index += 1;
+                        
+                        last_start = i + 2;
+                        while last_start < chars.len() && chars[last_start].is_whitespace() {
+                            last_start += 1;
+                        }
+                        i = last_start.saturating_sub(1);
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    
+    if last_start < chars.len() {
+        let final_text: String = chars[last_start..].iter().collect();
+        if !final_text.trim().is_empty() {
+            sentences.push(DetectedSentence {
+                index: sentence_index,
+                normalized_content: final_text.trim().to_string(),
+                span: Span {
+                    start_line: 1,
+                    start_col: last_start + 1,
+                    end_line: 1,
+                    end_col: chars.len() + 1,
+                },
+            });
+        }
+    }
+    
+    Ok(sentences)
+}
+
+// Multi-Pattern DFA Strategy for Benchmark
+// WHY: Test performance with combined pattern DFA approach
+fn detect_sentences_multipattern_benchmark(text: &str) -> Result<Vec<DetectedSentence>, Box<dyn std::error::Error>> {
+    use regex_automata::dfa::{dense::DFA, Automaton};
+    
+    let abbreviations = [
+        "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
+        "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
+        "ft.", "in.", "lbs.", "oz.", "mi.", "km.",
+        "a.m.", "p.m.", "etc.", "vs.", "ea.", "deg.", "et al."
+    ];
+    
+    // Combine all patterns into one optimized DFA
+    let combined_pattern = r#"[.!?](?:['"\u{201D}\u{2019}])?\s+(?:[A-Z]|['"\u{201C}\u{2018}]|[({\[])"#;
+    let dfa = DFA::new(combined_pattern)?;
+    
+    let mut sentences = Vec::new();
+    let mut sentence_index = 0;
+    let mut last_start = 0;
+    let mut search_at = 0;
+    let text_bytes = text.as_bytes();
+    
+    while search_at < text_bytes.len() {
+        if let Some(match_result) = dfa.try_search_fwd(&regex_automata::Input::new(&text_bytes[search_at..]))? {
+            let match_start = search_at + match_result.offset();
+            
+            // Find punctuation position
+            let mut punct_pos = match_start;
+            while punct_pos < text_bytes.len() {
+                let byte = text_bytes[punct_pos];
+                if byte == b'.' || byte == b'!' || byte == b'?' {
+                    break;
+                }
+                punct_pos += 1;
+            }
+            
+            let potential_end = punct_pos + 1;
+            let sentence_bytes = &text_bytes[last_start..potential_end];
+            
+            if let Ok(preceding_text) = std::str::from_utf8(sentence_bytes) {
+                let is_abbreviation = abbreviations.iter().any(|abbrev| {
+                    preceding_text.trim_end().ends_with(abbrev)
+                });
+                
+                if !is_abbreviation {
+                    sentences.push(DetectedSentence {
+                        index: sentence_index,
+                        normalized_content: preceding_text.to_string(),
+                        span: Span {
+                            start_line: 1,
+                            start_col: last_start + 1,
+                            end_line: 1,
+                            end_col: potential_end + 1,
+                        },
+                    });
+                    sentence_index += 1;
+                    
+                    // Move to next sentence
+                    last_start = potential_end;
+                    while last_start < text_bytes.len() && text_bytes[last_start].is_ascii_whitespace() {
+                        last_start += 1;
+                    }
+                }
+            }
+            
+            search_at = match_start + 1;
+        } else {
+            break;
+        }
+    }
+    
+    // Add final sentence
+    if last_start < text_bytes.len() {
+        if let Ok(final_text) = std::str::from_utf8(&text_bytes[last_start..]) {
+            if !final_text.trim().is_empty() {
+                sentences.push(DetectedSentence {
+                    index: sentence_index,
+                    normalized_content: final_text.to_string(),
+                    span: Span {
+                        start_line: 1,
+                        start_col: last_start + 1,
+                        end_line: 1,
+                        end_col: text_bytes.len() + 1,
+                    },
+                });
+            }
+        }
+    }
+    
+    Ok(sentences)
 }
 
 fn bench_sentence_detection(c: &mut Criterion) {
@@ -230,6 +397,18 @@ fn bench_gutenberg_throughput(c: &mut Criterion) {
     group.bench_function("enhanced_dictionary_chars_per_sec", |b| {
         b.iter(|| {
             detect_sentences_dictionary_enhanced_benchmark(black_box(&all_text)).unwrap();
+        })
+    });
+
+    group.bench_function("context_analysis_chars_per_sec", |b| {
+        b.iter(|| {
+            detect_sentences_context_analysis_benchmark(black_box(&all_text)).unwrap();
+        })
+    });
+
+    group.bench_function("multipattern_dfa_chars_per_sec", |b| {
+        b.iter(|| {
+            detect_sentences_multipattern_benchmark(black_box(&all_text)).unwrap();
         })
     });
 

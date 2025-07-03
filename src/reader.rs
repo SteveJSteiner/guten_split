@@ -185,6 +185,7 @@ impl AsyncFileReader {
 
 /// Convenience function for reading a single file with default configuration
 /// WHY: Simplifies common use case for integration tests and external callers
+#[cfg_attr(test, allow(dead_code))]
 pub async fn read_file_async<P: AsRef<Path>>(file_path: P) -> Result<String> {
     let reader = AsyncFileReader::new(ReaderConfig::default());
     let (lines, _stats) = reader.read_file_lines(file_path).await?;
