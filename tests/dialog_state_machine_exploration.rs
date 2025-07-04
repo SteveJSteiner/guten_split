@@ -134,6 +134,76 @@ pub fn char_to_line_col(text: &str, char_pos: CharPos) -> Result<(OneBasedLine, 
     ))
 }
 
+// PHASE 1: Incremental Position Tracking
+// WHY: Eliminate O(N²) behavior from repeated byte_to_char_pos and char_to_line_col scans
+#[derive(Debug)]
+pub struct PositionTracker {
+    current_byte_pos: usize,
+    current_char_pos: usize,
+    current_line: usize,
+    current_col: usize,
+    text_bytes: Vec<u8>,
+}
+
+impl PositionTracker {
+    pub fn new(text: &str) -> Self {
+        Self {
+            current_byte_pos: 0,
+            current_char_pos: 0,
+            current_line: 1,
+            current_col: 1,
+            text_bytes: text.as_bytes().to_vec(),
+        }
+    }
+    
+    /// Advance incrementally to target byte position, updating char/line/col counters
+    pub fn advance_to_byte(&mut self, target_byte_pos: BytePos) -> Result<(CharPos, OneBasedLine, OneBasedCol), String> {
+        if target_byte_pos.0 < self.current_byte_pos {
+            return Err(format!("Cannot seek backwards: current {} > target {}", self.current_byte_pos, target_byte_pos.0));
+        }
+        
+        if target_byte_pos.0 > self.text_bytes.len() {
+            return Err(format!("Target byte position {} exceeds text length {}", target_byte_pos.0, self.text_bytes.len()));
+        }
+        
+        // Advance incrementally from current position to target
+        while self.current_byte_pos < target_byte_pos.0 {
+            let byte = self.text_bytes[self.current_byte_pos];
+            
+            // Check if this byte starts a UTF-8 character
+            if (byte & 0x80) == 0 || (byte & 0xC0) == 0xC0 {
+                // This is either ASCII (0xxxxxxx) or start of multi-byte (11xxxxxx)
+                self.current_char_pos += 1;
+                
+                if byte == b'\n' {
+                    self.current_line += 1;
+                    self.current_col = 1;
+                } else {
+                    self.current_col += 1;
+                }
+            }
+            // Continuation bytes (10xxxxxx) don't increment char_pos or col
+            
+            self.current_byte_pos += 1;
+        }
+        
+        Ok((
+            CharPos::new(self.current_char_pos),
+            OneBasedLine::new(self.current_line).unwrap(),
+            OneBasedCol::new(self.current_col).unwrap(),
+        ))
+    }
+    
+    /// Get current position without advancing
+    pub fn current_position(&self) -> (CharPos, OneBasedLine, OneBasedCol) {
+        (
+            CharPos::new(self.current_char_pos),
+            OneBasedLine::new(self.current_line).unwrap(),
+            OneBasedCol::new(self.current_col).unwrap(),
+        )
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DialogState {
     Narrative,
@@ -274,6 +344,9 @@ impl DialogStateMachine {
         let mut sentence_start_byte = BytePos::new(0);
         let mut position_byte = BytePos::new(0);
         
+        // PHASE 1: Use incremental position tracker instead of O(N) position conversions
+        let mut position_tracker = PositionTracker::new(text);
+        
         while position_byte.0 < text.len() {
             let pattern = match self.patterns.get(&current_state) {
                 Some(p) => p,
@@ -303,13 +376,9 @@ impl DialogStateMachine {
                         if sentence_end_byte.0 > sentence_start_byte.0 {
                             let content = text[sentence_start_byte.0..sentence_end_byte.0].trim().to_string();
                             if !content.is_empty() {
-                                // Convert byte positions to character positions
-                                let start_char = byte_to_char_pos(text, sentence_start_byte)?;
-                                let end_char = byte_to_char_pos(text, sentence_end_byte)?;
-                                
-                                // Convert character positions to line/col
-                                let (start_line, start_col) = char_to_line_col(text, start_char)?;
-                                let (end_line, end_col) = char_to_line_col(text, end_char)?;
+                                // PHASE 1: Use incremental position tracker instead of O(N) conversions
+                                let (start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)?;
+                                let (end_char, end_line, end_col) = position_tracker.advance_to_byte(sentence_end_byte)?;
                                 
                                 sentences.push(DetectedSentence {
                                     start_pos: start_char,
@@ -344,11 +413,9 @@ impl DialogStateMachine {
                         if sentence_end_byte.0 > sentence_start_byte.0 {
                             let content = text[sentence_start_byte.0..sentence_end_byte.0].trim().to_string();
                             if !content.is_empty() {
-                                let start_char = byte_to_char_pos(text, sentence_start_byte)?;
-                                let end_char = byte_to_char_pos(text, sentence_end_byte)?;
-                                
-                                let (start_line, start_col) = char_to_line_col(text, start_char)?;
-                                let (end_line, end_col) = char_to_line_col(text, end_char)?;
+                                // PHASE 1: Use incremental position tracker instead of O(N) conversions
+                                let (start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)?;
+                                let (end_char, end_line, end_col) = position_tracker.advance_to_byte(sentence_end_byte)?;
                                 
                                 sentences.push(DetectedSentence {
                                     start_pos: start_char,
@@ -375,11 +442,9 @@ impl DialogStateMachine {
                             let raw_content = &text[sentence_start_byte.0..match_start_byte.0];
                             let content = raw_content.trim_start().trim_end_matches(char::is_whitespace).to_string();
                             if !content.is_empty() {
-                                let start_char = byte_to_char_pos(text, sentence_start_byte)?;
-                                let end_char = byte_to_char_pos(text, match_start_byte)?;
-                                
-                                let (start_line, start_col) = char_to_line_col(text, start_char)?;
-                                let (end_line, end_col) = char_to_line_col(text, end_char)?;
+                                // PHASE 1: Use incremental position tracker instead of O(N) conversions
+                                let (start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)?;
+                                let (end_char, end_line, end_col) = position_tracker.advance_to_byte(match_start_byte)?;
                                 
                                 sentences.push(DetectedSentence {
                                     start_pos: start_char,
@@ -405,11 +470,9 @@ impl DialogStateMachine {
                 if sentence_start_byte.0 < text.len() {
                     let content = text[sentence_start_byte.0..].trim().to_string();
                     if !content.is_empty() {
-                        let start_char = byte_to_char_pos(text, sentence_start_byte)?;
-                        let end_char = byte_to_char_pos(text, BytePos::new(text.len()))?;
-                        
-                        let (start_line, start_col) = char_to_line_col(text, start_char)?;
-                        let (end_line, end_col) = char_to_line_col(text, end_char)?;
+                        // PHASE 1: Use incremental position tracker instead of O(N) conversions
+                        let (start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)?;
+                        let (end_char, end_line, end_col) = position_tracker.advance_to_byte(BytePos::new(text.len()))?;
                         
                         sentences.push(DetectedSentence {
                             start_pos: start_char,
