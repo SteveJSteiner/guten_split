@@ -2,22 +2,30 @@
 
 ## Overview
 
-This document specifies the regex patterns and state machine design for dialog-aware sentence boundary detection. The approach uses a single-pass state machine where each state has a specific regex pattern optimized for that context.
+This document specifies the regex patterns and state machine design for dialog-aware sentence boundary detection. The approach uses a single-pass state machine where each state has a specific regex pattern optimized for that narrative gesture context.
 
 ## Design Principles
 
-### 1. Context-Specific Boundary Detection
+### 1. Narrative Gesture-Based Detection
 
-Different contexts require different sentence boundary patterns:
-- **Narrative**: Standard punctuation + whitespace + capital letter
-- **Dialog**: Punctuation + closing quote + whitespace + any sentence start
-- **Parentheticals**: Punctuation + closing bracket + whitespace + any sentence start
+The state machine recognizes two fundamental narrative gestures:
+- **Narrative Gesture Boundaries**: Produce actual sentence boundaries and recorded sentences
+- **Dialog Opens**: Trigger state transitions without producing boundaries (dialog coalescing)
 
-### 2. State-Specific Regex Patterns
+### 2. Unified Dialog Concept
 
-Each state has a compiled regex pattern that matches valid sentence boundaries for that context. The transducer determines exit reason and next state based on which part of the pattern matched.
+All dialog-like constructs are handled identically:
+- **Traditional Dialog**: Quotes (`"`, `'`, `"`, `'`)
+- **Parenthetical Dialog**: Brackets (`(`, `[`, `{`)
 
-### 3. Unicode Escape Codes
+Both follow the same coalescing pattern: find matching close punctuation, treat interior as single narrative unit.
+
+### 3. State Transition vs Boundary Production
+
+- **Boundary Producers**: `NARRATIVE_GESTURE_BOUNDARY` creates sentence splits and records sentences
+- **State Transitions**: `DIALOG_OPEN` changes state without recording sentences (enables coalescing)
+
+### 4. Unicode Escape Codes
 
 All Unicode characters use explicit escape codes (e.g., `\u{201C}`) to ensure proper tool handling and compilation.
 
@@ -29,67 +37,76 @@ All Unicode characters use explicit escape codes (e.g., `\u{201C}`) to ensure pr
 - `DialogSingleQuote` - inside ASCII single quotes `'`
 - `DialogSmartDoubleOpen` - inside Unicode smart double quotes `\u{201C}` 
 - `DialogSmartSingleOpen` - inside Unicode smart single quotes `\u{2018}`
-- `ParenthheticalRound` - inside round parentheses `(`
-- `ParenthheticalSquare` - inside square brackets `[`
-- `ParenthheticalCurly` - inside curly braces `{`
+- `DialogParenthheticalRound` - inside round parentheses `(` (treated as dialog)
+- `DialogParenthheticalSquare` - inside square brackets `[` (treated as dialog)
+- `DialogParenthheticalCurly` - inside curly braces `{` (treated as dialog)
 - `Unknown` - after HARD_SENT_SEP, next boundary determines state
 
 ## Pattern Components
 
-### Sentence Separators
+### Narrative Gesture Patterns
+
+#### Boundary Producers (create sentence boundaries)
 ```rust
+// Sentence separators
 BASIC_SENT_SEP = "\\s+"
 HARD_SENT_SEP = "\\n\\n"
+
+// Narrative gesture boundary
+NARRATIVE_GESTURE_BOUNDARY = "(?:[.!?]\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{])|(?:\\n\\n)"
 ```
 
-### Sentence Endings by Context
+#### State Transition Triggers (no boundaries produced)
 ```rust
-// Basic punctuation
-NARRATIVE_SENT_END = "[.!?]"
+// Dialog opening patterns
+DIALOG_OPEN_DOUBLE_QUOTE = "\\x22"      // "
+DIALOG_OPEN_SINGLE_QUOTE = "\\x27"      // '
+DIALOG_OPEN_SMART_DOUBLE = "\\u{201C}"  // "
+DIALOG_OPEN_SMART_SINGLE = "\\u{2018}"  // '
+DIALOG_OPEN_PAREN_ROUND = "\\("         // (
+DIALOG_OPEN_PAREN_SQUARE = "\\["        // [
+DIALOG_OPEN_PAREN_CURLY = "\\{"         // {
 
+// Combined dialog open pattern
+DIALOG_OPEN = "(?:[\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{])"
+```
+
+#### Dialog State Endings (boundary producers within dialog)
+```rust
 // Quote endings (punctuation + specific closing quote)
-DOUBLE_QUOTE_SENT_END = "[.!?]\""
-SINGLE_QUOTE_SENT_END = "[.!?]'"
-SMART_DOUBLE_SENT_END = "[.!?]\\u{201D}"
-SMART_SINGLE_SENT_END = "[.!?]\\u{2019}"
+DOUBLE_QUOTE_DIALOG_END = "[.!?]\\x22\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
+SINGLE_QUOTE_DIALOG_END = "[.!?]\\x27\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
+SMART_DOUBLE_DIALOG_END = "[.!?]\\u{201D}\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
+SMART_SINGLE_DIALOG_END = "[.!?]\\u{2019}\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
 
 // Parenthetical endings (punctuation + specific closing bracket)
-PAREN_ROUND_SENT_END = "[.!?]\\)"
-PAREN_SQUARE_SENT_END = "[.!?]\\]"
-PAREN_CURLY_SENT_END = "[.!?]\\}"
-```
-
-### Sentence Starts
-```rust
-CAPITAL_START = "[A-Z]"
-QUOTE_START = "[\"'\\u{201C}\\u{2018}]"
-PAREN_START = "[\\(\\[\\{]"
-BASIC_START = "(?:[A-Z]|[\"'\\u{201C}\\u{2018}]|[\\(\\[\\{])"
+PAREN_ROUND_DIALOG_END = "[.!?]\\)\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
+PAREN_SQUARE_DIALOG_END = "[.!?]\\]\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
+PAREN_CURLY_DIALOG_END = "[.!?]\\}\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
 ```
 
 ## State-Specific Patterns
 
 ### Narrative State
 ```rust
-NARRATIVE_PATTERN = "(?:" + NARRATIVE_SENT_END + BASIC_SENT_SEP + BASIC_START + ")|(?:" + HARD_SENT_SEP + ")"
+// Matches both boundary producers and state transition triggers
+NARRATIVE_PATTERN = "(?:" + NARRATIVE_GESTURE_BOUNDARY + ")|(?:" + DIALOG_OPEN + ")"
 ```
 
-### Dialog States
+### Dialog States (all handle boundaries + hard separators)
 ```rust
 // ASCII quotes
-DIALOG_DOUBLE_PATTERN = "(?:" + DOUBLE_QUOTE_SENT_END + BASIC_SENT_SEP + BASIC_START + ")|(?:" + HARD_SENT_SEP + ")"
-DIALOG_SINGLE_PATTERN = "(?:" + SINGLE_QUOTE_SENT_END + BASIC_SENT_SEP + BASIC_START + ")|(?:" + HARD_SENT_SEP + ")"
+DIALOG_DOUBLE_PATTERN = "(?:" + DOUBLE_QUOTE_DIALOG_END + ")|(?:" + HARD_SENT_SEP + ")"
+DIALOG_SINGLE_PATTERN = "(?:" + SINGLE_QUOTE_DIALOG_END + ")|(?:" + HARD_SENT_SEP + ")"
 
-// Unicode smart quotes
-DIALOG_SMART_DOUBLE_PATTERN = "(?:" + SMART_DOUBLE_SENT_END + BASIC_SENT_SEP + BASIC_START + ")|(?:" + HARD_SENT_SEP + ")"
-DIALOG_SMART_SINGLE_PATTERN = "(?:" + SMART_SINGLE_SENT_END + BASIC_SENT_SEP + BASIC_START + ")|(?:" + HARD_SENT_SEP + ")"
-```
+// Unicode smart quotes  
+DIALOG_SMART_DOUBLE_PATTERN = "(?:" + SMART_DOUBLE_DIALOG_END + ")|(?:" + HARD_SENT_SEP + ")"
+DIALOG_SMART_SINGLE_PATTERN = "(?:" + SMART_SINGLE_DIALOG_END + ")|(?:" + HARD_SENT_SEP + ")"
 
-### Parenthetical States
-```rust
-PAREN_ROUND_PATTERN = "(?:" + PAREN_ROUND_SENT_END + BASIC_SENT_SEP + BASIC_START + ")|(?:" + HARD_SENT_SEP + ")"
-PAREN_SQUARE_PATTERN = "(?:" + PAREN_SQUARE_SENT_END + BASIC_SENT_SEP + BASIC_START + ")|(?:" + HARD_SENT_SEP + ")"
-PAREN_CURLY_PATTERN = "(?:" + PAREN_CURLY_SENT_END + BASIC_SENT_SEP + BASIC_START + ")|(?:" + HARD_SENT_SEP + ")"
+// Parenthetical dialog states
+DIALOG_PAREN_ROUND_PATTERN = "(?:" + PAREN_ROUND_DIALOG_END + ")|(?:" + HARD_SENT_SEP + ")"
+DIALOG_PAREN_SQUARE_PATTERN = "(?:" + PAREN_SQUARE_DIALOG_END + ")|(?:" + HARD_SENT_SEP + ")"
+DIALOG_PAREN_CURLY_PATTERN = "(?:" + PAREN_CURLY_DIALOG_END + ")|(?:" + HARD_SENT_SEP + ")"
 ```
 
 ## Transducer Logic

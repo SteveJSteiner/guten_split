@@ -141,9 +141,9 @@ pub enum DialogState {
     DialogSingleQuote,
     DialogSmartDoubleOpen,
     DialogSmartSingleOpen,
-    ParenthheticalRound,
-    ParenthheticalSquare,
-    ParenthheticalCurly,
+    DialogParenthheticalRound,
+    DialogParenthheticalSquare,
+    DialogParenthheticalCurly,
     Unknown,
 }
 
@@ -159,11 +159,11 @@ pub struct DetectedSentence {
 }
 
 #[derive(Debug, Clone)]
-pub enum ExitReason {
+pub enum MatchType {
+    NarrativeGestureBoundary,
+    DialogOpen,
+    DialogEnd,
     HardSeparator,
-    QuoteEnd,
-    ParenthheticalEnd,
-    NarrativeEnd,
 }
 
 pub struct DialogStateMachine {
@@ -176,62 +176,60 @@ impl DialogStateMachine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let mut patterns = HashMap::new();
         
-        // Pattern components
-        let basic_sent_sep = r"\s+";
+        // Narrative gesture boundary pattern components
+        let narrative_gesture_boundary = r"[.!?]\s+[A-Z\x22\x27\u{201C}\u{2018}\(\[\{]";
         let hard_sent_sep = r"\n\n";
+        let dialog_open = r"[\x22\x27\u{201C}\u{2018}\(\[\{]";
         
-        // Sentence endings by context
-        let narrative_sent_end = r"[.!?]";
-        let double_quote_sent_end = r"[.!?]\x22";
-        let single_quote_sent_end = r"[.!?]\x27";
-        let smart_double_sent_end = r"[.!?]\u{201D}";
-        let smart_single_sent_end = r"[.!?]\u{2019}";
-        let paren_round_sent_end = r"[.!?]\)";
-        let paren_square_sent_end = r"[.!?]\]";
-        let paren_curly_sent_end = r"[.!?]\}";
-        
-        // Sentence starts
-        let basic_start = r"(?:[A-Z]|[\x22\x27\u{201C}\u{2018}]|[\(\[\{])";
+        // Dialog ending patterns (punctuation + close + separator + sentence start)
+        let sentence_start = r"[A-Z\x22\x27\u{201C}\u{2018}\(\[\{]";
+        let dialog_double_end = format!(r"[.!?]\x22\s+{}", sentence_start);
+        let dialog_single_end = format!(r"[.!?]\x27\s+{}", sentence_start);
+        let dialog_smart_double_end = format!(r"[.!?]\u{{201D}}\s+{}", sentence_start);
+        let dialog_smart_single_end = format!(r"[.!?]\u{{2019}}\s+{}", sentence_start);
+        let dialog_paren_round_end = format!(r"[.!?]\)\s+{}", sentence_start);
+        let dialog_paren_square_end = format!(r"[.!?]\]\s+{}", sentence_start);
+        let dialog_paren_curly_end = format!(r"[.!?]\}}\s+{}", sentence_start);
         
         // Build state-specific patterns
         let narrative_pattern = format!(
-            "(?:{}{}{})|(?:{})",
-            narrative_sent_end, basic_sent_sep, basic_start, hard_sent_sep
+            "(?:{})|(?:{})|(?:{})",
+            narrative_gesture_boundary, dialog_open, hard_sent_sep
         );
         
         let dialog_double_pattern = format!(
-            "(?:{}{}{})|(?:{})",
-            double_quote_sent_end, basic_sent_sep, basic_start, hard_sent_sep
+            "(?:{})|(?:{})",
+            dialog_double_end, hard_sent_sep
         );
         
         let dialog_single_pattern = format!(
-            "(?:{}{}{})|(?:{})",
-            single_quote_sent_end, basic_sent_sep, basic_start, hard_sent_sep
+            "(?:{})|(?:{})",
+            dialog_single_end, hard_sent_sep
         );
         
         let dialog_smart_double_pattern = format!(
-            "(?:{}{}{})|(?:{})",
-            smart_double_sent_end, basic_sent_sep, basic_start, hard_sent_sep
+            "(?:{})|(?:{})",
+            dialog_smart_double_end, hard_sent_sep
         );
         
         let dialog_smart_single_pattern = format!(
-            "(?:{}{}{})|(?:{})",
-            smart_single_sent_end, basic_sent_sep, basic_start, hard_sent_sep
+            "(?:{})|(?:{})",
+            dialog_smart_single_end, hard_sent_sep
         );
         
-        let paren_round_pattern = format!(
-            "(?:{}{}{})|(?:{})",
-            paren_round_sent_end, basic_sent_sep, basic_start, hard_sent_sep
+        let dialog_paren_round_pattern = format!(
+            "(?:{})|(?:{})",
+            dialog_paren_round_end, hard_sent_sep
         );
         
-        let paren_square_pattern = format!(
-            "(?:{}{}{})|(?:{})",
-            paren_square_sent_end, basic_sent_sep, basic_start, hard_sent_sep
+        let dialog_paren_square_pattern = format!(
+            "(?:{})|(?:{})",
+            dialog_paren_square_end, hard_sent_sep
         );
         
-        let paren_curly_pattern = format!(
-            "(?:{}{}{})|(?:{})",
-            paren_curly_sent_end, basic_sent_sep, basic_start, hard_sent_sep
+        let dialog_paren_curly_pattern = format!(
+            "(?:{})|(?:{})",
+            dialog_paren_curly_end, hard_sent_sep
         );
         
         // Compile patterns
@@ -240,9 +238,9 @@ impl DialogStateMachine {
         patterns.insert(DialogState::DialogSingleQuote, Regex::new(&dialog_single_pattern)?);
         patterns.insert(DialogState::DialogSmartDoubleOpen, Regex::new(&dialog_smart_double_pattern)?);
         patterns.insert(DialogState::DialogSmartSingleOpen, Regex::new(&dialog_smart_single_pattern)?);
-        patterns.insert(DialogState::ParenthheticalRound, Regex::new(&paren_round_pattern)?);
-        patterns.insert(DialogState::ParenthheticalSquare, Regex::new(&paren_square_pattern)?);
-        patterns.insert(DialogState::ParenthheticalCurly, Regex::new(&paren_curly_pattern)?);
+        patterns.insert(DialogState::DialogParenthheticalRound, Regex::new(&dialog_paren_round_pattern)?);
+        patterns.insert(DialogState::DialogParenthheticalSquare, Regex::new(&dialog_paren_square_pattern)?);
+        patterns.insert(DialogState::DialogParenthheticalCurly, Regex::new(&dialog_paren_curly_pattern)?);
         
         // Helper patterns for state transitions
         let quote_starts = Regex::new(r"[\x22\x27\u{201C}\u{2018}]")?;
@@ -276,51 +274,115 @@ impl DialogStateMachine {
                 let match_start_byte = position_byte.advance(mat.start());
                 let match_end_byte = position_byte.advance(mat.end());
                 
-                // Determine exit reason and next state
-                let (_exit_reason, next_state) = self.determine_exit_reason_and_next_state(
-                    &text[match_start_byte.0..match_end_byte.0],
-                    &text[match_end_byte.0..],
-                    &current_state,
-                );
+                // Determine what type of match this is and next state
+                let matched_text = &text[match_start_byte.0..match_end_byte.0];
+                let (match_type, next_state) = self.classify_match(matched_text, &current_state);
                 
-                // Sentence end is BEFORE the current SENT_SEP
-                // The match includes SENT_END + SENT_SEP + SENT_START
-                // We need to find where SENT_SEP starts within the match
-                let sentence_end_byte = self.find_sent_sep_start(&text[match_start_byte.0..match_end_byte.0])
-                    .map(|sep_offset| match_start_byte.advance(sep_offset))
-                    .unwrap_or(match_start_byte);
-                
-                if sentence_end_byte.0 > sentence_start_byte.0 {
-                    let content = text[sentence_start_byte.0..sentence_end_byte.0].trim().to_string();
-                    if !content.is_empty() {
-                        // Convert byte positions to character positions
-                        let start_char = byte_to_char_pos(text, sentence_start_byte)?;
-                        let end_char = byte_to_char_pos(text, sentence_end_byte)?;
+                match match_type {
+                    MatchType::NarrativeGestureBoundary => {
+                        // This creates a sentence boundary - record the sentence
+                        let sentence_end_byte = self.find_sent_sep_start(matched_text)
+                            .map(|sep_offset| match_start_byte.advance(sep_offset))
+                            .unwrap_or(match_start_byte);
                         
-                        // Convert character positions to line/col
-                        let (start_line, start_col) = char_to_line_col(text, start_char)?;
-                        let (end_line, end_col) = char_to_line_col(text, end_char)?;
+                        if sentence_end_byte.0 > sentence_start_byte.0 {
+                            let content = text[sentence_start_byte.0..sentence_end_byte.0].trim().to_string();
+                            if !content.is_empty() {
+                                // Convert byte positions to character positions
+                                let start_char = byte_to_char_pos(text, sentence_start_byte)?;
+                                let end_char = byte_to_char_pos(text, sentence_end_byte)?;
+                                
+                                // Convert character positions to line/col
+                                let (start_line, start_col) = char_to_line_col(text, start_char)?;
+                                let (end_line, end_col) = char_to_line_col(text, end_char)?;
+                                
+                                sentences.push(DetectedSentence {
+                                    start_pos: start_char,
+                                    end_pos: end_char,
+                                    content,
+                                    start_line,
+                                    start_col,
+                                    end_line,
+                                    end_col,
+                                });
+                            }
+                        }
                         
-                        sentences.push(DetectedSentence {
-                            start_pos: start_char,
-                            end_pos: end_char,
-                            content,
-                            start_line,
-                            start_col,
-                            end_line,
-                            end_col,
-                        });
+                        // Next sentence starts after the separator
+                        let next_sentence_start_byte = self.find_sent_sep_end(matched_text)
+                            .map(|sep_end_offset| match_start_byte.advance(sep_end_offset))
+                            .unwrap_or(match_end_byte);
+                        
+                        sentence_start_byte = next_sentence_start_byte;
+                    }
+                    MatchType::DialogOpen => {
+                        // State transition only - no sentence boundary created
+                        // Continue from match start (include the opening punctuation in dialog)
+                        // No sentence recorded, just state change
+                    }
+                    MatchType::DialogEnd => {
+                        // Dialog end creates a sentence boundary
+                        let sentence_end_byte = self.find_sent_sep_start(matched_text)
+                            .map(|sep_offset| match_start_byte.advance(sep_offset))
+                            .unwrap_or(match_start_byte);
+                        
+                        if sentence_end_byte.0 > sentence_start_byte.0 {
+                            let content = text[sentence_start_byte.0..sentence_end_byte.0].trim().to_string();
+                            if !content.is_empty() {
+                                let start_char = byte_to_char_pos(text, sentence_start_byte)?;
+                                let end_char = byte_to_char_pos(text, sentence_end_byte)?;
+                                
+                                let (start_line, start_col) = char_to_line_col(text, start_char)?;
+                                let (end_line, end_col) = char_to_line_col(text, end_char)?;
+                                
+                                sentences.push(DetectedSentence {
+                                    start_pos: start_char,
+                                    end_pos: end_char,
+                                    content,
+                                    start_line,
+                                    start_col,
+                                    end_line,
+                                    end_col,
+                                });
+                            }
+                        }
+                        
+                        let next_sentence_start_byte = self.find_sent_sep_end(matched_text)
+                            .map(|sep_end_offset| match_start_byte.advance(sep_end_offset))
+                            .unwrap_or(match_end_byte);
+                        
+                        sentence_start_byte = next_sentence_start_byte;
+                    }
+                    MatchType::HardSeparator => {
+                        // Hard separator - record sentence and transition to Unknown
+                        if sentence_start_byte.0 < match_start_byte.0 {
+                            // For hard separators, preserve punctuation but trim trailing whitespace carefully
+                            let raw_content = &text[sentence_start_byte.0..match_start_byte.0];
+                            let content = raw_content.trim_start().trim_end_matches(char::is_whitespace).to_string();
+                            if !content.is_empty() {
+                                let start_char = byte_to_char_pos(text, sentence_start_byte)?;
+                                let end_char = byte_to_char_pos(text, match_start_byte)?;
+                                
+                                let (start_line, start_col) = char_to_line_col(text, start_char)?;
+                                let (end_line, end_col) = char_to_line_col(text, end_char)?;
+                                
+                                sentences.push(DetectedSentence {
+                                    start_pos: start_char,
+                                    end_pos: end_char,
+                                    content,
+                                    start_line,
+                                    start_col,
+                                    end_line,
+                                    end_col,
+                                });
+                            }
+                        }
+                        
+                        sentence_start_byte = match_end_byte;
                     }
                 }
                 
-                // Next sentence start is AFTER the current SENT_SEP
-                // Find where SENT_SEP ends within the match
-                let next_sentence_start_byte = self.find_sent_sep_end(&text[match_start_byte.0..match_end_byte.0])
-                    .map(|sep_end_offset| match_start_byte.advance(sep_end_offset))
-                    .unwrap_or(match_end_byte);
-                
                 // Update position and state
-                sentence_start_byte = next_sentence_start_byte;
                 position_byte = match_end_byte;
                 current_state = next_state;
             } else {
@@ -352,107 +414,71 @@ impl DialogStateMachine {
         Ok(sentences)
     }
     
-    fn determine_exit_reason_and_next_state(
-        &self,
-        matched_text: &str,
-        following_text: &str,
-        current_state: &DialogState,
-    ) -> (ExitReason, DialogState) {
-        // Check for hard separator
+    fn classify_match(&self, matched_text: &str, current_state: &DialogState) -> (MatchType, DialogState) {
+        // Check for hard separator first
         if matched_text.contains("\n\n") {
-            return (ExitReason::HardSeparator, DialogState::Unknown);
+            return (MatchType::HardSeparator, DialogState::Unknown);
         }
         
-        // Check for quote endings
-        if matched_text.contains('"') && matched_text.contains("[.!?]") {
-            return (ExitReason::QuoteEnd, DialogState::Narrative);
-        }
-        if matched_text.contains("'") && matched_text.contains("[.!?]") {
-            return (ExitReason::QuoteEnd, DialogState::Narrative);
-        }
-        if matched_text.contains('\u{201D}') {
-            return (ExitReason::QuoteEnd, DialogState::Narrative);
-        }
-        if matched_text.contains('\u{2019}') {
-            return (ExitReason::QuoteEnd, DialogState::Narrative);
-        }
-        
-        // Check for parenthetical endings
-        if matched_text.contains(')') && matched_text.contains("[.!?]") {
-            return (ExitReason::ParenthheticalEnd, DialogState::Narrative);
-        }
-        if matched_text.contains(']') && matched_text.contains("[.!?]") {
-            return (ExitReason::ParenthheticalEnd, DialogState::Narrative);
-        }
-        if matched_text.contains('}') && matched_text.contains("[.!?]") {
-            return (ExitReason::ParenthheticalEnd, DialogState::Narrative);
-        }
-        
-        // Handle narrative transitions by checking following text
         match current_state {
             DialogState::Narrative => {
-                // Check for quote starts
-                if let Some(quote_match) = self.quote_starts.find(Input::new(following_text)) {
-                    let quote_char = &following_text[quote_match.start()..quote_match.end()];
-                    match quote_char {
-                        "\"" => return (ExitReason::NarrativeEnd, DialogState::DialogDoubleQuote),
-                        "'" => return (ExitReason::NarrativeEnd, DialogState::DialogSingleQuote),
-                        "\u{201C}" => return (ExitReason::NarrativeEnd, DialogState::DialogSmartDoubleOpen),
-                        "\u{2018}" => return (ExitReason::NarrativeEnd, DialogState::DialogSmartSingleOpen),
-                        _ => {}
+                // In narrative state, determine if this is a boundary or dialog open
+                if matched_text.contains("[.!?]") && matched_text.contains(char::is_whitespace) {
+                    // This is a narrative gesture boundary
+                    (MatchType::NarrativeGestureBoundary, DialogState::Narrative)
+                } else {
+                    // This must be a dialog open - determine which type
+                    if matched_text.contains('"') {
+                        (MatchType::DialogOpen, DialogState::DialogDoubleQuote)
+                    } else if matched_text.contains('\'') {
+                        (MatchType::DialogOpen, DialogState::DialogSingleQuote)
+                    } else if matched_text.contains('\u{201C}') {
+                        (MatchType::DialogOpen, DialogState::DialogSmartDoubleOpen)
+                    } else if matched_text.contains('\u{2018}') {
+                        (MatchType::DialogOpen, DialogState::DialogSmartSingleOpen)
+                    } else if matched_text.contains('(') {
+                        (MatchType::DialogOpen, DialogState::DialogParenthheticalRound)
+                    } else if matched_text.contains('[') {
+                        (MatchType::DialogOpen, DialogState::DialogParenthheticalSquare)
+                    } else if matched_text.contains('{') {
+                        (MatchType::DialogOpen, DialogState::DialogParenthheticalCurly)
+                    } else {
+                        // Fallback
+                        (MatchType::NarrativeGestureBoundary, DialogState::Narrative)
                     }
                 }
-                
-                // Check for parenthetical starts
-                if let Some(paren_match) = self.paren_starts.find(Input::new(following_text)) {
-                    let paren_char = &following_text[paren_match.start()..paren_match.end()];
-                    match paren_char {
-                        "(" => return (ExitReason::NarrativeEnd, DialogState::ParenthheticalRound),
-                        "[" => return (ExitReason::NarrativeEnd, DialogState::ParenthheticalSquare),
-                        "{" => return (ExitReason::NarrativeEnd, DialogState::ParenthheticalCurly),
-                        _ => {}
-                    }
-                }
-                
-                (ExitReason::NarrativeEnd, DialogState::Narrative)
             }
             DialogState::Unknown => {
-                // Determine next state based on context
-                self.determine_state_from_context(following_text)
+                // After hard separator, determine next state based on what we found
+                self.determine_state_from_context(matched_text)
             }
             _ => {
-                // Continue in current state for dialog/parenthetical contexts
-                (ExitReason::NarrativeEnd, current_state.clone())
+                // In dialog state - this must be a dialog end
+                (MatchType::DialogEnd, DialogState::Narrative)
             }
         }
     }
     
-    fn determine_state_from_context(&self, text: &str) -> (ExitReason, DialogState) {
-        // Check for quote starts
-        if let Some(quote_match) = self.quote_starts.find(Input::new(text)) {
-            let quote_char = &text[quote_match.start()..quote_match.end()];
-            match quote_char {
-                "\"" => return (ExitReason::NarrativeEnd, DialogState::DialogDoubleQuote),
-                "'" => return (ExitReason::NarrativeEnd, DialogState::DialogSingleQuote),
-                "\u{201C}" => return (ExitReason::NarrativeEnd, DialogState::DialogSmartDoubleOpen),
-                "\u{2018}" => return (ExitReason::NarrativeEnd, DialogState::DialogSmartSingleOpen),
-                _ => {}
-            }
+    fn determine_state_from_context(&self, text: &str) -> (MatchType, DialogState) {
+        // Check for dialog opens
+        if text.contains('"') {
+            (MatchType::DialogOpen, DialogState::DialogDoubleQuote)
+        } else if text.contains('\'') {
+            (MatchType::DialogOpen, DialogState::DialogSingleQuote)
+        } else if text.contains('\u{201C}') {
+            (MatchType::DialogOpen, DialogState::DialogSmartDoubleOpen)
+        } else if text.contains('\u{2018}') {
+            (MatchType::DialogOpen, DialogState::DialogSmartSingleOpen)
+        } else if text.contains('(') {
+            (MatchType::DialogOpen, DialogState::DialogParenthheticalRound)
+        } else if text.contains('[') {
+            (MatchType::DialogOpen, DialogState::DialogParenthheticalSquare)
+        } else if text.contains('{') {
+            (MatchType::DialogOpen, DialogState::DialogParenthheticalCurly)
+        } else {
+            // Default to narrative boundary
+            (MatchType::NarrativeGestureBoundary, DialogState::Narrative)
         }
-        
-        // Check for parenthetical starts
-        if let Some(paren_match) = self.paren_starts.find(Input::new(text)) {
-            let paren_char = &text[paren_match.start()..paren_match.end()];
-            match paren_char {
-                "(" => return (ExitReason::NarrativeEnd, DialogState::ParenthheticalRound),
-                "[" => return (ExitReason::NarrativeEnd, DialogState::ParenthheticalSquare),
-                "{" => return (ExitReason::NarrativeEnd, DialogState::ParenthheticalCurly),
-                _ => {}
-            }
-        }
-        
-        // Default to narrative
-        (ExitReason::NarrativeEnd, DialogState::Narrative)
     }
     
     fn find_sent_sep_start(&self, matched_boundary: &str) -> Option<usize> {
