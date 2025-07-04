@@ -1,12 +1,17 @@
 // Gutenberg Sentence Generation Utility
-// Processes all files in Gutenberg mirror with Enhanced Dictionary strategy
-// Creates .sentences files next to each original file for manual inspection
+// Processes all files in Gutenberg mirror with both Enhanced Dictionary and Dialog State Machine strategies
+// Creates .norm_sents and .norm_sm_sents files next to each original file for comparison
 
 use anyhow::Result;
 use rs_sft_sentences::discovery::{collect_discovered_files, DiscoveryConfig};
 use std::path::PathBuf;
 use tokio::fs;
 use regex_automata::meta::Regex;
+
+// Import dialog state machine module for comparison
+mod dialog_state_machine_exploration {
+    include!("../../tests/dialog_state_machine_exploration.rs");
+}
 
 // Enhanced Dictionary Strategy - Copy from tests for sentence generation
 fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<String>> {
@@ -100,6 +105,25 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<String>> {
     Ok(sentences)
 }
 
+// Dialog State Machine Strategy - Uses the optimized Phase 1 implementation
+fn detect_sentences_dialog_state_machine(text: &str) -> Result<Vec<String>> {
+    use dialog_state_machine_exploration::DialogStateMachine;
+    
+    let dialog_machine = DialogStateMachine::new()
+        .map_err(|e| anyhow::anyhow!("Failed to create dialog state machine: {}", e))?;
+    
+    let sentences = dialog_machine.detect_sentences(text)
+        .map_err(|e| anyhow::anyhow!("Failed to detect sentences: {}", e))?;
+    
+    // Convert DetectedSentence to strings
+    let sentence_strings: Vec<String> = sentences
+        .into_iter()
+        .map(|s| s.content)
+        .collect();
+    
+    Ok(sentence_strings)
+}
+
 // Helper functions (copied from test implementation)
 fn find_punctuation_end(text: &str, boundary_start: usize) -> usize {
     let mut char_indices = text[boundary_start..].char_indices();
@@ -160,7 +184,9 @@ fn find_quote_or_paren_start(text: &str, start_pos: usize) -> usize {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    println!("🔍 Generating Enhanced Dictionary sentence outputs for Gutenberg texts...");
+    println!("🔍 Generating sentence outputs for Gutenberg texts with both strategies...");
+    println!("   📚 Enhanced Dictionary (.norm_sents)");
+    println!("   🤖 Dialog State Machine (.norm_sm_sents)");
     
     // Get Gutenberg mirror directory
     let mirror_dir = std::env::var("GUTENBERG_MIRROR_DIR")
@@ -196,26 +222,28 @@ async fn main() -> Result<()> {
     
     for file_info in &valid_files {
         let file_path = &file_info.path;
-        let sentences_path = file_path.with_extension(
-            format!("{}.norm_sents", 
-                file_path.extension().and_then(|s| s.to_str()).unwrap_or("txt"))
-        );
+        let base_extension = file_path.extension().and_then(|s| s.to_str()).unwrap_or("txt");
+        let sentences_path = file_path.with_extension(format!("{}.norm_sents", base_extension));
+        let sm_sentences_path = file_path.with_extension(format!("{}.norm_sm_sents", base_extension));
         
-        // Skip if sentences file already exists
-        if sentences_path.exists() {
+        // Check if both files already exist
+        let dict_exists = sentences_path.exists();
+        let sm_exists = sm_sentences_path.exists();
+        
+        if dict_exists && sm_exists {
             skipped += 1;
             if processed % 50 == 0 {
-                println!("⏭️  Skipping {} (sentences file exists)", file_path.display());
+                println!("⏭️  Skipping {} (both sentence files exist)", file_path.display());
             }
             continue;
-        } 
+        }
         
-        match process_file(file_path, &sentences_path).await {
-            Ok(sentence_count) => {
+        match process_file_both_strategies(file_path, &sentences_path, &sm_sentences_path, dict_exists, sm_exists).await {
+            Ok((dict_count, sm_count)) => {
                 processed += 1;
                 if processed % 10 == 0 {
-                    println!("✅ Processed {} files... Latest: {} ({} sentences)", 
-                        processed, file_path.file_name().unwrap().to_string_lossy(), sentence_count);
+                    println!("✅ Processed {} files... Latest: {} (dict: {}, sm: {} sentences)", 
+                        processed, file_path.file_name().unwrap().to_string_lossy(), dict_count, sm_count);
                 }
             }
             Err(e) => {
@@ -227,21 +255,26 @@ async fn main() -> Result<()> {
     
     println!("\n🎉 Generation complete!");
     println!("   📄 Processed: {} files", processed);
-    println!("   ⏭️  Skipped: {} files (already had .sentences)", skipped);
+    println!("   ⏭️  Skipped: {} files (already had both sentence files)", skipped);
     println!("   ❌ Errors: {} files", errors);
     
     if processed > 0 {
-        println!("\n💡 Sentence files created with .sentences extension next to original files");
-        println!("   Use these for manual inspection of boundary types and quality assessment");
+        println!("\n💡 Sentence files created with two strategies:");
+        println!("   📚 .norm_sents = Enhanced Dictionary strategy");
+        println!("   🤖 .norm_sm_sents = Dialog State Machine strategy");
+        println!("   Compare files to analyze dialog coalescing differences");
         
         // Show some examples
         if let Some(first_file) = valid_files.first() {
-            let example_sentences_path = first_file.path.with_extension(
-                format!("{}.sentences", 
-                    first_file.path.extension().and_then(|s| s.to_str()).unwrap_or("txt"))
-            );
-            if example_sentences_path.exists() {
-                println!("   📝 Example sentences file: {}", example_sentences_path.display());
+            let base_ext = first_file.path.extension().and_then(|s| s.to_str()).unwrap_or("txt");
+            let dict_path = first_file.path.with_extension(format!("{}.norm_sents", base_ext));
+            let sm_path = first_file.path.with_extension(format!("{}.norm_sm_sents", base_ext));
+            
+            if dict_path.exists() {
+                println!("   📝 Example dictionary file: {}", dict_path.display());
+            }
+            if sm_path.exists() {
+                println!("   📝 Example state machine file: {}", sm_path.display());
             }
         }
     }
@@ -249,26 +282,48 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn process_file(input_path: &PathBuf, output_path: &PathBuf) -> Result<usize> {
-    // Read the file
+async fn process_file_both_strategies(
+    input_path: &PathBuf, 
+    dict_output_path: &PathBuf, 
+    sm_output_path: &PathBuf,
+    dict_exists: bool,
+    sm_exists: bool
+) -> Result<(usize, usize)> {
+    // Read the file once
     let content = fs::read_to_string(input_path).await?;
     
-    // Apply Enhanced Dictionary sentence detection
-    let sentences = detect_sentences_dictionary_enhanced(&content)
-        .map_err(|e| anyhow::anyhow!("Failed to detect sentences: {}", e))?;
+    let mut dict_count = 0;
+    let mut sm_count = 0;
     
-    // Format as left-justified columns: index, sentence length, and normalized sentence
-    let mut output = String::new();
-    for (index, sentence) in sentences.iter().enumerate() {
-        // Normalize the sentence by removing newlines
-        let normalized = sentence.replace('\n', " ").replace('\r', "");
+    // Process with Enhanced Dictionary strategy if needed
+    if !dict_exists {
+        let sentences = detect_sentences_dictionary_enhanced(&content)
+            .map_err(|e| anyhow::anyhow!("Failed to detect sentences with dictionary: {}", e))?;
         
-        // Format with left-justified columns (5 chars for index, 5 chars for length)
-        output.push_str(&format!("{:<5} {:<5} {}\n", index + 1, normalized.len(), normalized));
+        let mut output = String::new();
+        for (index, sentence) in sentences.iter().enumerate() {
+            let normalized = sentence.replace('\n', " ").replace('\r', "");
+            output.push_str(&format!("{:<5} {:<5} {}\n", index + 1, normalized.len(), normalized));
+        }
+        
+        fs::write(dict_output_path, output).await?;
+        dict_count = sentences.len();
     }
     
-    // Write sentences file
-    fs::write(output_path, output).await?;
+    // Process with Dialog State Machine strategy if needed
+    if !sm_exists {
+        let sentences = detect_sentences_dialog_state_machine(&content)
+            .map_err(|e| anyhow::anyhow!("Failed to detect sentences with state machine: {}", e))?;
+        
+        let mut output = String::new();
+        for (index, sentence) in sentences.iter().enumerate() {
+            let normalized = sentence.replace('\n', " ").replace('\r', "");
+            output.push_str(&format!("{:<5} {:<5} {}\n", index + 1, normalized.len(), normalized));
+        }
+        
+        fs::write(sm_output_path, output).await?;
+        sm_count = sentences.len();
+    }
     
-    Ok(sentences.len())
+    Ok((dict_count, sm_count))
 }

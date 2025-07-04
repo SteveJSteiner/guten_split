@@ -693,4 +693,32 @@ mod tests {
         assert_eq!(sentences[0].content, "He was boat and captain: \"Stop her, sir! Ting-a-ling-ling!\"");
         assert_eq!(sentences[1].content, "The headway ran almost out.");
     }
+    
+    #[test]
+    fn test_false_negative_dialog_over_coalescing() {
+        let machine = DialogStateMachine::new().unwrap();
+        
+        // From FALSE_NEGATIVE_examples.txt - Oliver Twist conversation
+        // This should be split into multiple sentences, not treated as one massive narrative gesture
+        let text = r#"(He stirred the gin-and-water.) "I—I drink your health with cheerfulness, Mrs. Mann"; and he swallowed half of it. "And now about business," said the beadle, taking out a leathern pocket-book. "The child that was half-baptized Oliver Twist, is nine year old today." "Bless him!" interposed Mrs. Mann, inflaming her left eye with the corner of her apron."#;
+        
+        let sentences = machine.detect_sentences(text).unwrap();
+        
+        println!("DEBUG: FALSE_NEGATIVE test found {} sentences", sentences.len());
+        for (i, sentence) in sentences.iter().enumerate() {
+            println!("DEBUG: Sentence {}: '{}'", i, sentence.content);
+        }
+        
+        // Expected: Should split this into at least 5 separate sentences:
+        // 1. "(He stirred the gin-and-water.)"
+        // 2. "I—I drink your health with cheerfulness, Mrs. Mann"; and he swallowed half of it.
+        // 3. "And now about business," said the beadle, taking out a leathern pocket-book.
+        // 4. "The child that was half-baptized Oliver Twist, is nine year old today."
+        // 5. "Bless him!" interposed Mrs. Mann, inflaming her left eye with the corner of her apron.
+        
+        // FAILING TEST: Currently over-coalesces into 1-2 sentences instead of proper splitting
+        assert!(sentences.len() >= 5, 
+            "Expected at least 5 sentences but got {}. Dialog state machine is over-coalescing!", 
+            sentences.len());
+    }
 }

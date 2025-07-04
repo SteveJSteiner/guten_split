@@ -72,8 +72,16 @@ DIALOG_OPEN = "(?:[\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{])"
 ```
 
 #### Dialog State Endings (boundary producers within dialog)
+
+**PROBLEM IDENTIFIED**: The current design conflates DIALOG_END with SENTENCE_END, causing over-coalescing.
+
+**Issue**: Dialog can end without ending a sentence. Examples from failing test:
+- `Mann"; and` - semicolon (`;`) + quote + narrative continuation
+- `," said` - comma (`,`) + quote + narrative continuation  
+
+**Current (Incorrect) Patterns**:
 ```rust
-// Quote endings (punctuation + specific closing quote)
+// These ONLY match sentence-ending punctuation [.!?], missing other dialog endings
 DOUBLE_QUOTE_DIALOG_END = "[.!?]\\x22\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
 SINGLE_QUOTE_DIALOG_END = "[.!?]\\x27\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
 SMART_DOUBLE_DIALOG_END = "[.!?]\\u{201D}\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
@@ -84,6 +92,18 @@ PAREN_ROUND_DIALOG_END = "[.!?]\\)\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]
 PAREN_SQUARE_DIALOG_END = "[.!?]\\]\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
 PAREN_CURLY_DIALOG_END = "[.!?]\\}\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
 ```
+
+**Proposed Solution**: Distinguish HARD_DIALOG_END vs SOFT_DIALOG_END:
+
+```rust
+// HARD_DIALOG_END: Dialog ends AND sentence ends (creates sentence boundary)
+HARD_DOUBLE_QUOTE_DIALOG_END = "[.!?]\\x22\\s+[A-Z\\x22\\x27\\u{201C}\\u{2018}\\(\\[\\{]"
+
+// SOFT_DIALOG_END: Dialog ends but sentence continues (creates sentence boundary)  
+SOFT_DOUBLE_QUOTE_DIALOG_END = "[^.!?\\s]\\x22\\s+[a-z]" // non-sentence-punct + quote + space + lowercase
+```
+
+**Root Cause**: Test case `Mann"; and he swallowed` has semicolon + quote + lowercase, indicating dialog-to-narrative transition that should create a sentence boundary even though the dialog doesn't end with sentence punctuation.
 
 ## State-Specific Patterns
 

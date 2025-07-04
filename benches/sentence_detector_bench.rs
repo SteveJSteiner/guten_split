@@ -6,6 +6,11 @@ use rs_sft_sentences::sentence_detector::{DetectedSentence, Span, SentenceBounda
 use std::path::PathBuf;
 use regex_automata::meta::Regex;
 
+// Import dialog state machine for benchmarking
+mod dialog_state_machine_exploration {
+    include!("../tests/dialog_state_machine_exploration.rs");
+}
+
 const SIMPLE_TEXT: &str = "Hello world. This is a test. How are you?";
 const COMPLEX_TEXT: &str = r#"
     "Mr. & Mrs. Smith," she said, "went to Washington, D.C. last week." 
@@ -260,6 +265,32 @@ fn detect_sentences_multipattern_benchmark(text: &str) -> Result<Vec<DetectedSen
     Ok(sentences)
 }
 
+// Dialog State Machine Strategy for Benchmark
+// WHY: Test performance of dialog-aware sentence boundary detection with coalescing
+fn detect_sentences_dialog_state_machine_benchmark(text: &str) -> Result<Vec<DetectedSentence>, Box<dyn std::error::Error>> {
+    use dialog_state_machine_exploration::{DialogStateMachine, byte_to_char_pos, char_to_line_col};
+    
+    let dialog_machine = DialogStateMachine::new()?;
+    let dialog_sentences = dialog_machine.detect_sentences(text)?;
+    
+    // Convert from dialog state machine format to benchmark format
+    let mut sentences = Vec::new();
+    for (index, sentence) in dialog_sentences.iter().enumerate() {
+        sentences.push(DetectedSentence {
+            index,
+            normalized_content: sentence.content.clone(),
+            span: Span {
+                start_line: sentence.start_line.into(),
+                start_col: sentence.start_col.into(),
+                end_line: sentence.end_line.into(),
+                end_col: sentence.end_col.into(),
+            },
+        });
+    }
+    
+    Ok(sentences)
+}
+
 fn bench_sentence_detection(c: &mut Criterion) {
     let mut group = c.benchmark_group("sentence_detection");
 
@@ -409,6 +440,12 @@ fn bench_gutenberg_throughput(c: &mut Criterion) {
     group.bench_function("multipattern_dfa_chars_per_sec", |b| {
         b.iter(|| {
             detect_sentences_multipattern_benchmark(black_box(&all_text)).unwrap();
+        })
+    });
+
+    group.bench_function("dialog_state_machine_chars_per_sec", |b| {
+        b.iter(|| {
+            detect_sentences_dialog_state_machine_benchmark(black_box(&all_text)).unwrap();
         })
     });
 
