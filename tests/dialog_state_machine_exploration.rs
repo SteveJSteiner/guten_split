@@ -176,60 +176,75 @@ impl DialogStateMachine {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let mut patterns = HashMap::new();
         
-        // Narrative gesture boundary pattern components
-        let narrative_gesture_boundary = r"[.!?]\s+[A-Z\x22\x27\u{201C}\u{2018}\(\[\{]";
-        let hard_sent_sep = r"\n\n";
-        let dialog_open = r"[\x22\x27\u{201C}\u{2018}\(\[\{]";
+        // Compositional pattern components
+        let sentence_end_punct = r"[.!?]";
+        let soft_separator = r"[ \t]+";  // spaces and tabs only
+        let hard_separator = r"\n\n";   // double newline
+        let sentence_start_chars = r"[A-Z\x22\x27\u{201C}\u{2018}\(\[\{]";
+        let dialog_open_chars = r"[\x22\x27\u{201C}\u{2018}\(\[\{]";
         
-        // Dialog ending patterns (punctuation + close + separator + sentence start)
-        let sentence_start = r"[A-Z\x22\x27\u{201C}\u{2018}\(\[\{]";
-        let dialog_double_end = format!(r"[.!?]\x22\s+{}", sentence_start);
-        let dialog_single_end = format!(r"[.!?]\x27\s+{}", sentence_start);
-        let dialog_smart_double_end = format!(r"[.!?]\u{{201D}}\s+{}", sentence_start);
-        let dialog_smart_single_end = format!(r"[.!?]\u{{2019}}\s+{}", sentence_start);
-        let dialog_paren_round_end = format!(r"[.!?]\)\s+{}", sentence_start);
-        let dialog_paren_square_end = format!(r"[.!?]\]\s+{}", sentence_start);
-        let dialog_paren_curly_end = format!(r"[.!?]\}}\s+{}", sentence_start);
+        // Composed patterns with visible logic
+        let narrative_soft_boundary = format!("{}{}{}", sentence_end_punct, soft_separator, sentence_start_chars);
+        let narrative_hard_boundary = format!(r"{}\s*{}\s*{}", sentence_end_punct, hard_separator, sentence_start_chars);
+        let pure_hard_sep = hard_separator.to_string();  // standalone hard separator (will need context check)
         
-        // Build state-specific patterns
+        // Dialog closing characters
+        let double_quote_close = r"\x22";      // "
+        let single_quote_close = r"\x27";      // '
+        let smart_double_close = r"\u{201D}";  // "
+        let smart_single_close = r"\u{2019}";  // '
+        let round_paren_close = r"\)";         // )
+        let square_bracket_close = r"\]";      // ]
+        let curly_brace_close = r"\}";         // }
+        
+        // Composed dialog ending patterns: PUNCT + CLOSE + SEP + START
+        let dialog_double_end = format!("{}{}{}{}", sentence_end_punct, double_quote_close, soft_separator, sentence_start_chars);
+        let dialog_single_end = format!("{}{}{}{}", sentence_end_punct, single_quote_close, soft_separator, sentence_start_chars);
+        let dialog_smart_double_end = format!("{}{}{}{}", sentence_end_punct, smart_double_close, soft_separator, sentence_start_chars);
+        let dialog_smart_single_end = format!("{}{}{}{}", sentence_end_punct, smart_single_close, soft_separator, sentence_start_chars);
+        let dialog_paren_round_end = format!("{}{}{}{}", sentence_end_punct, round_paren_close, soft_separator, sentence_start_chars);
+        let dialog_paren_square_end = format!("{}{}{}{}", sentence_end_punct, square_bracket_close, soft_separator, sentence_start_chars);
+        let dialog_paren_curly_end = format!("{}{}{}{}", sentence_end_punct, curly_brace_close, soft_separator, sentence_start_chars);
+        
+        // Build state-specific patterns with visible composition
         let narrative_pattern = format!(
-            "(?:{})|(?:{})|(?:{})",
-            narrative_gesture_boundary, dialog_open, hard_sent_sep
+            "(?:{})|(?:{})|(?:{})|(?:{})",
+            narrative_soft_boundary, narrative_hard_boundary, pure_hard_sep, dialog_open_chars
         );
         
         let dialog_double_pattern = format!(
             "(?:{})|(?:{})",
-            dialog_double_end, hard_sent_sep
+            dialog_double_end, pure_hard_sep
         );
         
         let dialog_single_pattern = format!(
             "(?:{})|(?:{})",
-            dialog_single_end, hard_sent_sep
+            dialog_single_end, pure_hard_sep
         );
         
         let dialog_smart_double_pattern = format!(
             "(?:{})|(?:{})",
-            dialog_smart_double_end, hard_sent_sep
+            dialog_smart_double_end, pure_hard_sep
         );
         
         let dialog_smart_single_pattern = format!(
             "(?:{})|(?:{})",
-            dialog_smart_single_end, hard_sent_sep
+            dialog_smart_single_end, pure_hard_sep
         );
         
         let dialog_paren_round_pattern = format!(
             "(?:{})|(?:{})",
-            dialog_paren_round_end, hard_sent_sep
+            dialog_paren_round_end, pure_hard_sep
         );
         
         let dialog_paren_square_pattern = format!(
             "(?:{})|(?:{})",
-            dialog_paren_square_end, hard_sent_sep
+            dialog_paren_square_end, pure_hard_sep
         );
         
         let dialog_paren_curly_pattern = format!(
             "(?:{})|(?:{})",
-            dialog_paren_curly_end, hard_sent_sep
+            dialog_paren_curly_end, pure_hard_sep
         );
         
         // Compile patterns
@@ -415,9 +430,18 @@ impl DialogStateMachine {
     }
     
     fn classify_match(&self, matched_text: &str, current_state: &DialogState) -> (MatchType, DialogState) {
-        // Check for hard separator first
-        if matched_text.contains("\n\n") {
+        // Check for pure hard separator (exactly \n\n)
+        if matched_text == "\n\n" {
             return (MatchType::HardSeparator, DialogState::Unknown);
+        }
+        
+        // Check for narrative hard boundary (contains punctuation + \n\n + letter)
+        if matched_text.contains("\n\n") {
+            let has_punct = matched_text.chars().any(|c| ".!?".contains(c));
+            let has_letter = matched_text.chars().any(|c| c.is_alphabetic());
+            if has_punct && has_letter {
+                return (MatchType::NarrativeGestureBoundary, DialogState::Narrative);
+            }
         }
         
         match current_state {
