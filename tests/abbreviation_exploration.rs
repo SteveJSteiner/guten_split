@@ -555,6 +555,8 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentenc
     let dialog_end_pattern = Regex::new(r#"[.!?]['"\u{201D}\u{2019}]\s+[A-Z]"#).unwrap();
     let quote_start_pattern = Regex::new(r#"[.!?]\s+['"\u{201C}\u{2018}]"#).unwrap();
     let paren_start_pattern = Regex::new(r"[.!?]\s+[({\[]").unwrap();
+    // Missing pattern: QUOTE_END + QUOTE_START (e.g., "?' '" in consecutive quotes)
+    let dialog_to_quote_pattern = Regex::new(r#"[.!?]['"\u{201D}\u{2019}]\s+['"\u{201C}\u{2018}]"#).unwrap();
     
     // Collect all potential boundaries with their types
     let mut boundaries = Vec::new();
@@ -572,6 +574,9 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentenc
     for mat in paren_start_pattern.find_iter(text) {
         boundaries.push((mat.start(), mat.end(), "paren_start"));
     }
+    for mat in dialog_to_quote_pattern.find_iter(text) {
+        boundaries.push((mat.start(), mat.end(), "dialog_to_quote"));
+    }
     
     // Sort by position and remove duplicates (same boundary matched by multiple patterns)
     boundaries.sort_by_key(|&(start, _, _)| start);
@@ -582,8 +587,16 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentenc
     let mut last_start = 0;
     
     for (boundary_start, boundary_end, boundary_type) in boundaries {
-        // Find the punctuation position using UTF-8 safe approach
-        let potential_end = find_punctuation_end(text, boundary_start);
+        // Find the sentence end position based on boundary type
+        let potential_end = match boundary_type {
+            "dialog_end" | "dialog_to_quote" => {
+                // For dialog_end pattern [.!?]['"\u{201D}\u{2019}]\s+[A-Z]
+                // and dialog_to_quote pattern [.!?]['"\u{201D}\u{2019}]\s+['"\u{201C}\u{2018}]
+                // we need to include the quote in the sentence
+                find_dialog_end_position(text, boundary_start)
+            },
+            _ => find_punctuation_end(text, boundary_start),
+        };
         let preceding_text = &text[last_start..potential_end];
         
         // Phase 2: Check for title + proper noun false positives
@@ -620,9 +633,10 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentenc
                     // Skip punctuation and whitespace to find capital letter
                     find_next_sentence_start(text, boundary_start + 1)
                 },
-                "dialog_end" => {
+                "dialog_end" | "dialog_to_quote" => {
                     // Skip punctuation, quote, and whitespace to find capital letter
-                    find_next_sentence_start(text, boundary_start + 1)
+                    // Use the position after the quote for proper sentence start
+                    find_next_sentence_start(text, potential_end)
                 },
                 "quote_start" | "paren_start" => {
                     // Skip punctuation and whitespace, start includes the quote/paren
@@ -693,6 +707,31 @@ fn find_punctuation_end(text: &str, boundary_start: usize) -> usize {
         }
     } else {
         // Edge case: boundary_start is at end of text
+        text.len()
+    }
+}
+
+// Helper function to find dialog end position (after punctuation AND quote)
+fn find_dialog_end_position(text: &str, boundary_start: usize) -> usize {
+    let mut char_indices = text[boundary_start..].char_indices();
+    
+    // Skip the punctuation mark
+    if let Some((_, punctuation)) = char_indices.next() {
+        // Skip the quote character
+        if let Some((_, quote)) = char_indices.next() {
+            // Return position after the quote
+            if let Some((next_byte_offset, _)) = char_indices.next() {
+                boundary_start + next_byte_offset
+            } else {
+                // Quote is at end of text
+                text.len()
+            }
+        } else {
+            // No quote found, fallback to after punctuation
+            boundary_start + punctuation.len_utf8()
+        }
+    } else {
+        // No punctuation found, edge case
         text.len()
     }
 }
