@@ -1,0 +1,76 @@
+{
+  "category": "known_issues",
+  "description": "Previously identified problematic patterns that need specific attention",
+  "issues": [
+    {
+      "id": "period_quote_space_misclassification",
+      "description": "KNOWN BUG: Period + space + quote incorrectly classified as DialogOpen instead of NarrativeGestureBoundary",
+      "pattern": ". \"",
+      "current_state": "Narrative",
+      "context_before": "They had been strangers too long",
+      "context_after": "It's all over, Mrs. Thingummy!\" said the surgeon.",
+      "actual_behavior": {
+        "match_type": "DialogOpen",
+        "next_state": "DialogDoubleQuote"
+      },
+      "expected_behavior": {
+        "match_type": "NarrativeGestureBoundary", 
+        "next_state": "Narrative"
+      },
+      "source": "FALSE_POSITIVE_examples.txt #7",
+      "validated": false,
+      "fixed": false
+    },
+    {
+      "id": "soft_dialog_end_creates_boundary",
+      "description": "KNOWN BUG: Soft dialog end (just quote) creates sentence boundary when it shouldn't",
+      "pattern": "\"",
+      "current_state": "DialogDoubleQuote",
+      "context_before": "It's all over, Mrs. Thingummy!",
+      "context_after": " said the surgeon at last.",
+      "actual_behavior": {
+        "match_type": "DialogEnd",
+        "next_state": "Narrative",
+        "creates_sentence_boundary": true
+      },
+      "expected_behavior": {
+        "match_type": "DialogEnd",
+        "next_state": "Narrative", 
+        "creates_sentence_boundary": false
+      },
+      "source": "FALSE_POSITIVE_examples.txt #7",
+      "validated": false,
+      "fixed": false
+    },
+    {
+      "id": "oliver_twist_over_coalescing",
+      "description": "KNOWN BUG: Oliver Twist dialog conversation over-coalesces into 4 sentences instead of 5+",
+      "pattern": "complex_dialog_sequence",
+      "current_state": "Narrative",
+      "context_before": "",
+      "context_after": "",
+      "full_text": "(He stirred the gin-and-water.) \"I—I drink your health with cheerfulness, Mrs. Mann\"; and he swallowed half of it. \"And now about business,\" said the beadle, taking out a leathern pocket-book. \"The child that was half-baptized Oliver Twist, is nine year old today.\" \"Bless him!\" interposed Mrs. Mann, inflaming her left eye with the corner of her apron.",
+      "actual_behavior": {
+        "sentence_count": 4,
+        "sentences": [
+          "(He stirred the gin-and-water.)",
+          "\"I—I drink your health with cheerfulness, Mrs. Mann\"; and he swallowed half of it. \"And now about business,\" said the beadle, taking out a leathern pocket-book. \"The child that was half-baptized Oliver Twist, is nine year old today.\"",
+          "\"Bless him!\" interposed Mrs. Mann, inflaming her left eye with the corner of her apron."
+        ]
+      },
+      "expected_behavior": {
+        "sentence_count": 5,
+        "note": "Should split dialog properly into separate sentences"
+      },
+      "source": "FALSE_NEGATIVE_examples.txt - Oliver Twist conversation",
+      "validated": false,
+      "fixed": false
+    }
+  ],
+  "validation_workflow": {
+    "add_new_issue": "Append new issue to this file when discovered",
+    "mark_validated": "Set validated: true when manually confirmed", 
+    "mark_fixed": "Set fixed: true when implementation corrected",
+    "test_regression": "Ensure fixed issues don't regress"
+  }
+}

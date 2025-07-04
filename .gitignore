@@ -19,3 +19,6 @@ run_stats.json
 # Temporary files
 *.tmp
 *.temp
+
+# Generated test files (regenerated from rules)
+tests/generated_boundary_tests.json

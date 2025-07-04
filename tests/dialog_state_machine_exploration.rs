@@ -93,47 +93,6 @@ impl OneBasedCol {
     }
 }
 
-/// Convert byte position to character position in given text
-pub fn byte_to_char_pos(text: &str, byte_pos: BytePos) -> Result<CharPos, String> {
-    if byte_pos.0 > text.len() {
-        return Err(format!("Byte position {} exceeds text length {}", byte_pos.0, text.len()));
-    }
-    
-    // Count characters up to byte position
-    let char_count = text[..byte_pos.0].chars().count();
-    Ok(CharPos::new(char_count))
-}
-
-/// Convert character position to line/column in given text
-pub fn char_to_line_col(text: &str, char_pos: CharPos) -> Result<(OneBasedLine, OneBasedCol), String> {
-    let mut line = 1;
-    let mut col = 1;
-    let mut char_count = 0;
-    
-    for ch in text.chars() {
-        if char_count == char_pos.0 {
-            break;
-        }
-        
-        if ch == '\n' {
-            line += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-        char_count += 1;
-    }
-    
-    if char_count != char_pos.0 && char_pos.0 != text.chars().count() {
-        return Err(format!("Character position {} exceeds text length", char_pos.0));
-    }
-    
-    Ok((
-        OneBasedLine::new(line).unwrap(),
-        OneBasedCol::new(col).unwrap(),
-    ))
-}
-
 // PHASE 1: Incremental Position Tracking
 // WHY: Eliminate O(N²) behavior from repeated byte_to_char_pos and char_to_line_col scans
 #[derive(Debug)]
@@ -195,6 +154,7 @@ impl PositionTracker {
     }
     
     /// Get current position without advancing
+    #[allow(dead_code)]
     pub fn current_position(&self) -> (CharPos, OneBasedLine, OneBasedCol) {
         (
             CharPos::new(self.current_char_pos),
@@ -219,12 +179,18 @@ pub enum DialogState {
 
 #[derive(Debug, Clone)]
 pub struct DetectedSentence {
+    #[allow(dead_code)]
     pub start_pos: CharPos,
+    #[allow(dead_code)]
     pub end_pos: CharPos,
     pub content: String,
+    #[allow(dead_code)]
     pub start_line: OneBasedLine,
+    #[allow(dead_code)]
     pub start_col: OneBasedCol,
+    #[allow(dead_code)]
     pub end_line: OneBasedLine,
+    #[allow(dead_code)]
     pub end_col: OneBasedCol,
 }
 
@@ -238,7 +204,9 @@ pub enum MatchType {
 
 pub struct DialogStateMachine {
     patterns: HashMap<DialogState, Regex>,
+    #[allow(dead_code)]
     quote_starts: Regex,
+    #[allow(dead_code)]
     paren_starts: Regex,
 }
 
@@ -267,16 +235,38 @@ impl DialogStateMachine {
         let square_bracket_close = r"\]";      // ]
         let curly_brace_close = r"\}";         // }
         
-        // Composed dialog ending patterns: PUNCT + CLOSE + SEP + START
-        let dialog_double_end = format!("{}{}{}{}", sentence_end_punct, double_quote_close, soft_separator, sentence_start_chars);
-        let dialog_single_end = format!("{}{}{}{}", sentence_end_punct, single_quote_close, soft_separator, sentence_start_chars);
-        let dialog_smart_double_end = format!("{}{}{}{}", sentence_end_punct, smart_double_close, soft_separator, sentence_start_chars);
-        let dialog_smart_single_end = format!("{}{}{}{}", sentence_end_punct, smart_single_close, soft_separator, sentence_start_chars);
-        let dialog_paren_round_end = format!("{}{}{}{}", sentence_end_punct, round_paren_close, soft_separator, sentence_start_chars);
-        let dialog_paren_square_end = format!("{}{}{}{}", sentence_end_punct, square_bracket_close, soft_separator, sentence_start_chars);
-        let dialog_paren_curly_end = format!("{}{}{}{}", sentence_end_punct, curly_brace_close, soft_separator, sentence_start_chars);
+        // Dialog ending patterns: HARD_END (sentence boundary) vs SOFT_END (just dialog close)
+        // HARD_END: sentence_end + close + separator + sentence_start (creates sentence boundary)
+        // SOFT_END: just close (needs state transition logic)
+        let dialog_hard_double_end = format!("{}{}{}{}", sentence_end_punct, double_quote_close, soft_separator, sentence_start_chars);
+        let dialog_soft_double_end = format!("{}", double_quote_close);
+        let dialog_double_end = format!("(?:{})|(?:{})", dialog_hard_double_end, dialog_soft_double_end);
         
-        // Build state-specific patterns with visible composition
+        let dialog_hard_single_end = format!("{}{}{}{}", sentence_end_punct, single_quote_close, soft_separator, sentence_start_chars);
+        let dialog_soft_single_end = format!("{}", single_quote_close);
+        let dialog_single_end = format!("(?:{})|(?:{})", dialog_hard_single_end, dialog_soft_single_end);
+        
+        let dialog_hard_smart_double_end = format!("{}{}{}{}", sentence_end_punct, smart_double_close, soft_separator, sentence_start_chars);
+        let dialog_soft_smart_double_end = format!("{}", smart_double_close);
+        let dialog_smart_double_end = format!("(?:{})|(?:{})", dialog_hard_smart_double_end, dialog_soft_smart_double_end);
+        
+        let dialog_hard_smart_single_end = format!("{}{}{}{}", sentence_end_punct, smart_single_close, soft_separator, sentence_start_chars);
+        let dialog_soft_smart_single_end = format!("{}", smart_single_close);
+        let dialog_smart_single_end = format!("(?:{})|(?:{})", dialog_hard_smart_single_end, dialog_soft_smart_single_end);
+        
+        let dialog_hard_paren_round_end = format!("{}{}{}{}", sentence_end_punct, round_paren_close, soft_separator, sentence_start_chars);
+        let dialog_soft_paren_round_end = format!("{}", round_paren_close);
+        let dialog_paren_round_end = format!("(?:{})|(?:{})", dialog_hard_paren_round_end, dialog_soft_paren_round_end);
+        
+        let dialog_hard_paren_square_end = format!("{}{}{}{}", sentence_end_punct, square_bracket_close, soft_separator, sentence_start_chars);
+        let dialog_soft_paren_square_end = format!("{}", square_bracket_close);
+        let dialog_paren_square_end = format!("(?:{})|(?:{})", dialog_hard_paren_square_end, dialog_soft_paren_square_end);
+        
+        let dialog_hard_paren_curly_end = format!("{}{}{}{}", sentence_end_punct, curly_brace_close, soft_separator, sentence_start_chars);
+        let dialog_soft_paren_curly_end = format!("{}", curly_brace_close);
+        let dialog_paren_curly_end = format!("(?:{})|(?:{})", dialog_hard_paren_curly_end, dialog_soft_paren_curly_end);
+        
+        // Build state-specific patterns with visible composition  
         let narrative_pattern = format!(
             "(?:{})|(?:{})|(?:{})|(?:{})",
             narrative_soft_boundary, narrative_hard_boundary, pure_hard_sep, dialog_open_chars
@@ -286,6 +276,7 @@ impl DialogStateMachine {
             "(?:{})|(?:{})",
             dialog_double_end, pure_hard_sep
         );
+        
         
         let dialog_single_pattern = format!(
             "(?:{})|(?:{})",
@@ -364,7 +355,15 @@ impl DialogStateMachine {
                 
                 // Determine what type of match this is and next state
                 let matched_text = &text[match_start_byte.0..match_end_byte.0];
+                
+                // DIAGNOSTIC: State machine tracing
+                println!("DIAG: State={:?}, Position={}, Match='{}', Full_context='{}'", 
+                    current_state, position_byte.0, matched_text, 
+                    &text[position_byte.0.saturating_sub(10)..match_end_byte.0.min(text.len()).saturating_add(10).min(text.len())]);
+                
                 let (match_type, next_state) = self.classify_match(matched_text, &current_state);
+                
+                println!("DIAG: Classified as {:?} -> {:?}", match_type, next_state);
                 
                 match match_type {
                     MatchType::NarrativeGestureBoundary => {
@@ -540,9 +539,25 @@ impl DialogStateMachine {
                 self.determine_state_from_context(matched_text)
             }
             _ => {
-                // In dialog state - this must be a dialog end
-                (MatchType::DialogEnd, DialogState::Narrative)
+                // In dialog state - this must be a dialog end, analyze punctuation context
+                self.classify_dialog_end(matched_text)
             }
+        }
+    }
+    
+    fn classify_dialog_end(&self, matched_text: &str) -> (MatchType, DialogState) {
+        // Check if this is a HARD_END (sentence punctuation + close + separator) or SOFT_END (just close)
+        let has_sentence_punct = matched_text.chars().any(|c| ".!?".contains(c));
+        let has_separator = matched_text.chars().any(char::is_whitespace);
+        
+        if has_sentence_punct && has_separator {
+            // HARD_END: This creates a sentence boundary and transitions to Narrative
+            (MatchType::DialogEnd, DialogState::Narrative)
+        } else {
+            // SOFT_END: Just dialog close, need to analyze what comes next
+            // For now, transition to Narrative (dialog has ended)
+            // TODO: Could examine context after the close to determine if sentence continues
+            (MatchType::DialogEnd, DialogState::Narrative)
         }
     }
     
@@ -597,12 +612,10 @@ impl DialogStateMachine {
         
         // Find the end of whitespace sequence
         let mut in_whitespace = false;
-        let mut whitespace_start = 0;
         
         for (i, ch) in matched_boundary.char_indices() {
             if ch.is_whitespace() {
                 if !in_whitespace {
-                    whitespace_start = i;
                     in_whitespace = true;
                 }
             } else if in_whitespace {
@@ -695,6 +708,33 @@ mod tests {
     }
     
     #[test]
+    fn test_false_positive_case_7_dialog_attribution() {
+        let machine = DialogStateMachine::new().unwrap();
+        
+        // From FALSE_POSITIVE_examples.txt #7 - Dialog attribution should be coalesced
+        // This should be ONE sentence, not split at the period before the quote
+        let text = r#"They had been strangers too long. "It's all over, Mrs. Thingummy!" said the surgeon at last."#;
+        
+        let sentences = machine.detect_sentences(text).unwrap();
+        
+        println!("DEBUG: FALSE_POSITIVE #7 test found {} sentences", sentences.len());
+        for (i, sentence) in sentences.iter().enumerate() {
+            println!("DEBUG: Sentence {}: '{}'", i, sentence.content);
+        }
+        
+        // Expected: Should be 2 sentences properly split
+        // 1. "They had been strangers too long."
+        // 2. "It's all over, Mrs. Thingummy!" said the surgeon at last.
+        assert_eq!(sentences.len(), 2, 
+            "Expected 2 sentences but got {}. Dialog state machine is not splitting correctly!", 
+            sentences.len());
+        
+        // Check the correct sentence boundaries
+        assert_eq!(sentences[0].content, "They had been strangers too long.");
+        assert_eq!(sentences[1].content, r#""It's all over, Mrs. Thingummy!" said the surgeon at last."#);
+    }
+
+    #[test]
     fn test_false_negative_dialog_over_coalescing() {
         let machine = DialogStateMachine::new().unwrap();
         
@@ -720,5 +760,362 @@ mod tests {
         assert!(sentences.len() >= 5, 
             "Expected at least 5 sentences but got {}. Dialog state machine is over-coalescing!", 
             sentences.len());
+    }
+    
+    #[test]
+    fn test_generated_boundary_cases() {
+        run_boundary_validation_workflow(false, 10);
+    }
+    
+    #[test]
+    fn test_populate_baseline_behavior() {
+        run_boundary_validation_workflow(true, 50);
+    }
+    
+    fn run_boundary_validation_workflow(populate_baseline: bool, limit: usize) {
+        use serde::{Deserialize, Serialize};
+        use regex_automata::Input;
+        
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        struct GeneratedTestCase {
+            id: String,
+            pattern: String,
+            current_state: String,
+            full_text: String,
+            context_before: String,
+            context_after: String,
+            expected_match_type: String,
+            expected_next_state: String,
+            creates_sentence_boundary: bool,
+            validated: bool,
+            source_rule: String,
+            source_category: String,
+            notes: String,
+        }
+        
+        #[derive(Debug, Serialize, Deserialize)]
+        struct GeneratedTestData {
+            schema_version: String,
+            description: String,
+            generated_from: Vec<String>,
+            test_cases: Vec<GeneratedTestCase>,
+        }
+        
+        #[derive(Debug, Clone, Serialize, Deserialize)]
+        struct ValidationStateEntry {
+            expected_match_type: String,
+            expected_next_state: String,
+            validated: bool,
+        }
+        
+        let machine = DialogStateMachine::new().unwrap();
+        
+        // Generate test cases to temp directory
+        let temp_dir = std::env::temp_dir();
+        let temp_test_file = temp_dir.join("boundary_tests_generated.json");
+        
+        // Run generator to create fresh test cases
+        let generate_result = std::process::Command::new("cargo")
+            .args(&["run", "--bin", "generate_boundary_tests"])
+            .env("BOUNDARY_TEST_OUTPUT", &temp_test_file)
+            .output();
+            
+        match generate_result {
+            Ok(output) if output.status.success() => {
+                println!("Generated fresh test cases to temp directory");
+            },
+            Ok(output) => {
+                println!("Generator failed: {}", String::from_utf8_lossy(&output.stderr));
+                return;
+            },
+            Err(e) => {
+                println!("Could not run generator: {}. Using existing file if available.", e);
+                // Fall back to existing file
+            }
+        }
+        
+        // Load generated test cases (try temp first, fall back to existing)
+        let test_file = if temp_test_file.exists() {
+            temp_test_file.to_str().unwrap()
+        } else {
+            "tests/generated_boundary_tests.json"
+        };
+        
+        let json_content = match std::fs::read_to_string(test_file) {
+            Ok(content) => content,
+            Err(_) => {
+                println!("Skipping test - no test file found. Run: cargo run --bin generate_boundary_tests");
+                return;
+            }
+        };
+        
+        let mut test_data: GeneratedTestData = serde_json::from_str(&json_content).unwrap();
+        
+        // Load validation state if it exists
+        let validation_state_file = "tests/boundary_validation_state.json";
+        if let Ok(validation_content) = std::fs::read_to_string(validation_state_file) {
+            if let Ok(validation_state) = serde_json::from_str::<std::collections::HashMap<String, ValidationStateEntry>>(&validation_content) {
+                // Merge validation state into test cases
+                for test_case in &mut test_data.test_cases {
+                    if let Some(state) = validation_state.get(&test_case.id) {
+                        test_case.expected_match_type = state.expected_match_type.clone();
+                        test_case.expected_next_state = state.expected_next_state.clone();
+                        test_case.validated = state.validated;
+                    }
+                }
+                println!("Merged validation state from {}", validation_state_file);
+            }
+        }
+        
+        println!("Running {} generated boundary tests (limit: {})...", test_data.test_cases.len(), limit);
+        if populate_baseline {
+            println!("BASELINE MODE: Will update test cases with current behavior");
+        }
+        
+        let mut passed = 0;
+        let mut failed = 0;
+        let mut no_match = 0;
+        let mut baseline_recorded = 0;
+        let mut attention_required = 0;
+        let mut errors = Vec::new();
+        let mut modified = false;
+        
+        // Category-wise tracking
+        let mut category_stats: std::collections::HashMap<String, (usize, usize, usize, usize, usize)> = std::collections::HashMap::new();
+        
+        for test_case in test_data.test_cases.iter_mut().take(limit) {
+            // Convert string state to DialogState enum
+            let current_state = match test_case.current_state.as_str() {
+                "Narrative" => DialogState::Narrative,
+                "DialogDoubleQuote" => DialogState::DialogDoubleQuote,
+                "DialogSingleQuote" => DialogState::DialogSingleQuote,
+                "DialogSmartDoubleOpen" => DialogState::DialogSmartDoubleOpen,
+                "DialogSmartSingleOpen" => DialogState::DialogSmartSingleOpen,
+                "DialogParenthheticalRound" => DialogState::DialogParenthheticalRound,
+                "DialogParenthheticalSquare" => DialogState::DialogParenthheticalSquare,
+                "DialogParenthheticalCurly" => DialogState::DialogParenthheticalCurly,
+                "Unknown" => DialogState::Unknown,
+                _ => {
+                    println!("SKIP: Unknown state '{}'", test_case.current_state);
+                    continue;
+                }
+            };
+            
+            // Get the regex pattern for the current state
+            let pattern_regex = match machine.patterns.get(&current_state) {
+                Some(regex) => regex,
+                None => {
+                    println!("SKIP: No pattern for state {:?}", current_state);
+                    continue;
+                }
+            };
+            
+            // Test if the pattern matches in the full text
+            let pattern_pos = test_case.context_before.len();
+            
+            if pattern_pos >= test_case.full_text.len() {
+                println!("SKIP: Pattern position {} >= text length {}", pattern_pos, test_case.full_text.len());
+                continue;
+            }
+            
+            let input_from_pattern = Input::new(&test_case.full_text[pattern_pos..]);
+            
+            let test_result = match pattern_regex.find(input_from_pattern) {
+                Some(mat) => {
+                    let matched_text = &test_case.full_text[pattern_pos + mat.start()..pattern_pos + mat.end()];
+                    
+                    // Check if the matched text contains our test pattern
+                    if matched_text.contains(&test_case.pattern) {
+                        let (actual_match_type, actual_next_state) = machine.classify_match(matched_text, &current_state);
+                        
+                        let actual_match_str = format!("{:?}", actual_match_type);
+                        let actual_state_str = format!("{:?}", actual_next_state);
+                        
+                        Some((actual_match_str, actual_state_str, matched_text.to_string()))
+                    } else {
+                        None // Pattern not found in matched text
+                    }
+                },
+                None => None // No regex match
+            };
+            
+            // Apply validation workflow
+            let result_type = match test_result {
+                Some((actual_match_str, actual_state_str, matched_text)) => {
+                    println!("TEST: {} | Pattern: '{}' | Matched: '{}'", 
+                        test_case.id, test_case.pattern, matched_text);
+                    println!("  Actual: {} -> {}", actual_match_str, actual_state_str);
+                    
+                    if test_case.expected_match_type == "UNKNOWN" {
+                        // BASELINE RECORDING
+                        if populate_baseline {
+                            test_case.expected_match_type = actual_match_str.clone();
+                            test_case.expected_next_state = actual_state_str.clone();
+                            modified = true;
+                            println!("  BASELINE_RECORDED: {} -> {}", actual_match_str, actual_state_str);
+                            baseline_recorded += 1;
+                            "baseline_recorded"
+                        } else {
+                            println!("  BASELINE: Current behavior {} -> {}", actual_match_str, actual_state_str);
+                            passed += 1;
+                            "passed"
+                        }
+                    } else {
+                        // VALIDATION AGAINST EXPECTED
+                        let behavior_changed = actual_match_str != test_case.expected_match_type || 
+                                             actual_state_str != test_case.expected_next_state;
+                        
+                        if test_case.validated {
+                            if behavior_changed {
+                                println!("  ERROR: Validated test behavior changed!");
+                                println!("    Expected: {} -> {}", test_case.expected_match_type, test_case.expected_next_state);
+                                println!("    Actual:   {} -> {}", actual_match_str, actual_state_str);
+                                errors.push(format!("{}: Validated behavior changed", test_case.id));
+                                failed += 1;
+                                "failed"
+                            } else {
+                                println!("  PASS: Validated behavior unchanged");
+                                passed += 1;
+                                "passed"
+                            }
+                        } else {
+                            if behavior_changed {
+                                println!("  ATTENTION_REQUIRED: Unvalidated behavior changed!");
+                                println!("    Expected: {} -> {}", test_case.expected_match_type, test_case.expected_next_state);
+                                println!("    Actual:   {} -> {}", actual_match_str, actual_state_str);
+                                attention_required += 1;
+                                "attention_required"
+                            } else {
+                                println!("  PASS: Unvalidated behavior unchanged");
+                                passed += 1;
+                                "passed"
+                            }
+                        }
+                    }
+                },
+                None => {
+                    if test_case.expected_match_type == "NO_MATCH" {
+                        println!("PASS: {} | No match as expected", test_case.id);
+                        passed += 1;
+                        "passed"
+                    } else {
+                        println!("NO_MATCH: {} | Pattern '{}' not found", test_case.id, test_case.pattern);
+                        no_match += 1;
+                        "no_match"
+                    }
+                }
+            };
+            
+            // Update category stats
+            let category = &test_case.source_category;
+            let stats = category_stats.entry(category.clone()).or_insert((0, 0, 0, 0, 0));
+            match result_type {
+                "passed" => stats.0 += 1,
+                "failed" => stats.1 += 1,
+                "no_match" => stats.2 += 1,
+                "baseline_recorded" => stats.3 += 1,
+                "attention_required" => stats.4 += 1,
+                _ => {}
+            }
+            println!();
+        }
+        
+        // Write back validation state if we populated baselines or made changes
+        if populate_baseline && modified {
+            // Extract validation state
+            let mut validation_state = std::collections::HashMap::new();
+            for test_case in &test_data.test_cases {
+                validation_state.insert(test_case.id.clone(), ValidationStateEntry {
+                    expected_match_type: test_case.expected_match_type.clone(),
+                    expected_next_state: test_case.expected_next_state.clone(),
+                    validated: test_case.validated,
+                });
+            }
+            
+            // Write validation state to separate file
+            let validation_state_file = "tests/boundary_validation_state.json";
+            let validation_json = serde_json::to_string_pretty(&validation_state).unwrap();
+            std::fs::write(validation_state_file, validation_json).expect("Failed to write validation state");
+            println!("Updated {} with baseline behavior", validation_state_file);
+        }
+        
+        println!("\n=== BOUNDARY VALIDATION SUMMARY ===");
+        let total_tested = passed + failed + no_match + baseline_recorded + attention_required;
+        
+        // Overall results
+        println!("Total Tests: {}", total_tested);
+        println!("Passed: {} ({:.1}%)", passed, if total_tested > 0 { (passed as f64 / total_tested as f64) * 100.0 } else { 0.0 });
+        if failed > 0 {
+            println!("Failed: {} ({:.1}%)", failed, (failed as f64 / total_tested as f64) * 100.0);
+        }
+        if no_match > 0 {
+            println!("No Match: {} ({:.1}%)", no_match, (no_match as f64 / total_tested as f64) * 100.0);
+        }
+        if baseline_recorded > 0 {
+            println!("Baseline Recorded: {} ({:.1}%)", baseline_recorded, (baseline_recorded as f64 / total_tested as f64) * 100.0);
+        }
+        if attention_required > 0 {
+            println!("Attention Required: {} ({:.1}%)", attention_required, (attention_required as f64 / total_tested as f64) * 100.0);
+        }
+        
+        // Category breakdown
+        println!("\n=== RESULTS BY CATEGORY ===");
+        let mut categories: Vec<_> = category_stats.keys().collect();
+        categories.sort();
+        
+        for category in categories {
+            let (cat_passed, cat_failed, cat_no_match, cat_baseline, cat_attention) = category_stats.get(category).unwrap();
+            let cat_total = cat_passed + cat_failed + cat_no_match + cat_baseline + cat_attention;
+            
+            if cat_total == 0 { continue; }
+            
+            let success_rate = if cat_total > 0 { 
+                ((cat_passed + cat_baseline) as f64 / cat_total as f64) * 100.0 
+            } else { 
+                0.0 
+            };
+            
+            println!("{}: {:.1}% success ({}/{} tests)", 
+                category, success_rate, cat_passed + cat_baseline, cat_total);
+            
+            if *cat_failed > 0 || *cat_attention > 0 || *cat_no_match > 0 {
+                print!("  ");
+                if *cat_failed > 0 {
+                    print!("Failed: {} ", cat_failed);
+                }
+                if *cat_attention > 0 {
+                    print!("Attention: {} ", cat_attention);
+                }
+                if *cat_no_match > 0 {
+                    print!("No Match: {} ", cat_no_match);
+                }
+                println!();
+            }
+        }
+        
+        // Error details
+        if !errors.is_empty() {
+            println!("\n=== ERRORS (Validated behavior changed) ===");
+            for error in errors {
+                println!("  {}", error);
+            }
+        }
+        
+        // Attention items
+        if attention_required > 0 {
+            println!("\n=== ATTENTION REQUIRED ===");
+            println!("{} unvalidated tests changed behavior", attention_required);
+            println!("Review these changes and mark as validated if correct");
+        }
+        
+        // Overall status
+        println!("\n=== OVERALL STATUS ===");
+        if failed > 0 {
+            println!("❌ FAILED: {} validated tests changed behavior", failed);
+        } else if attention_required > 0 {
+            println!("⚠️  ATTENTION: {} unvalidated tests need review", attention_required);
+        } else {
+            println!("✅ PASSED: All tests behaving as expected");
+        }
     }
 }

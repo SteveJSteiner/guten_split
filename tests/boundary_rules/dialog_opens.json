@@ -1,0 +1,47 @@
+{
+  "category": "dialog_opens",
+  "description": "Patterns that open dialog sections",
+  "rules": [
+    {
+      "id": "quote_dialog_open",
+      "description": "Quote characters that start dialog",
+      "end_chars": [""],
+      "separators": [""],
+      "start_chars": ["\"", "'", "\u201C", "\u2018"],
+      "context_template": "He said, {end}{sep}{start}Hello there, how are you?",
+      "expected_match_type": "DialogOpen",
+      "expected_next_state": "DialogDoubleQuote",
+      "creates_sentence_boundary": false,
+      "validated": false,
+      "notes": "Next state depends on quote type"
+    },
+    {
+      "id": "parenthetical_dialog_open", 
+      "description": "Parenthetical characters that start dialog",
+      "end_chars": [""],
+      "separators": [""],
+      "start_chars": ["(", "[", "{"],
+      "context_template": "She muttered {end}{sep}{start}under her breath)",
+      "expected_match_type": "DialogOpen",
+      "expected_next_state": "DialogParenthheticalRound",
+      "creates_sentence_boundary": false,
+      "validated": false,
+      "notes": "Next state depends on parenthetical type"
+    }
+  ],
+  "negative_rules": [
+    {
+      "id": "mid_sentence_quotes",
+      "description": "Quotes in middle of sentence - context dependent",
+      "end_chars": [""],
+      "separators": [""],
+      "start_chars": ["\"", "'"],
+      "context_template": "The word {end}{sep}{start}hello{start} is a greeting.",
+      "expected_match_type": "CONTEXT_DEPENDENT",
+      "expected_next_state": "CONTEXT_DEPENDENT", 
+      "creates_sentence_boundary": false,
+      "validated": false,
+      "notes": "May or may not be dialog depending on context"
+    }
+  ]
+}

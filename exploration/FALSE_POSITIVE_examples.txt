@@ -127,3 +127,23 @@ He attempted to touch the child, who, on finding himself with me,
 sobbed off his terror directly. At the first finger his father laid on
 him, however, he shrieked again louder than before, and struggled as if
 he would go into convulsions.
+
+---
+#7
+
+CONTEXT:
+he surgeon deposited it in her arms. She imprinted her cold white lips
+passionately on its forehead; passed her hands over her face; gazed
+wildly round; shuddered; fell back—and died. They chafed her breast,
+hands, and temples; but the blood had stopped forever. They talked of
+hope and comfort. They had been strangers too long.
+
+“It’s all over, Mrs. Thingummy!” said the surgeon at last.
+
+“Ah, poor dear, so it is!” said the nurse, picking up the cork of the
+green bottle, which had fallen out on the pillow, as she stooped to
+take up the child. “Poor dear!”
+
+Incorrect split:
+26 They had been strangers too long.  “It’s all over, Mrs. Thingummy!”
+27 said the surgeon at last.  “Ah, poor dear, so it is!”

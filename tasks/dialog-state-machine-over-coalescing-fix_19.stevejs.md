@@ -44,8 +44,36 @@ let text = r#"(He stirred the gin-and-water.) "I—I drink your health with chee
   - Ensure all unit tests pass
   - Generate and manually validate Oliver Twist sentence output using Dialog State Machine
 
+## DIAGNOSIS: Additional Issues Found
+
+* **FALSE_POSITIVE Case #7 Test Input:**
+```rust
+let text = r#"They had been strangers too long. "It's all over, Mrs. Thingummy!" said the surgeon at last."#;
+```
+
+* **Expected Output (2 sentences):**
+1. `They had been strangers too long.`
+2. `"It's all over, Mrs. Thingummy!" said the surgeon at last.`
+
+* **Actual Output (2 sentences - INCORRECT boundaries):**
+1. `They had been strangers too long. "It's all over, Mrs. Thingummy!`
+2. `said the surgeon at last.`
+
+* **State Machine Execution Trace:**
+```
+DIAG: State=Narrative, Position=0, Match='. "', Full_context='They had been strangers too long. "It's all o'
+DIAG: Classified as DialogOpen -> DialogDoubleQuote
+DIAG: State=DialogDoubleQuote, Position=35, Match='"', Full_context='oo long. "It's all over, Mrs. Thingummy!" said the '
+DIAG: Classified as DialogEnd -> Narrative
+```
+
+* **Literal Behavior Observed:**
+1. Pattern `. "` is matched and classified as `DialogOpen` instead of `NarrativeGestureBoundary`
+2. Pattern `"` (just the closing quote) is matched and classified as `DialogEnd`, creating a sentence boundary
+
 ## Pre-commit checklist:
-- [ ] `cargo test --test dialog_state_machine_exploration test_false_negative_dialog_over_coalescing` passes
-- [ ] `cargo test --test dialog_state_machine_exploration` passes (all 6 tests)
+- [x] `cargo test --test dialog_state_machine_exploration test_false_negative_dialog_over_coalescing` passes
+- [ ] `cargo test --test dialog_state_machine_exploration test_false_positive_case_7_dialog_attribution` passes
+- [ ] `cargo test --test dialog_state_machine_exploration` passes (all 7 tests)
 - [ ] Oliver Twist processed with Dialog State Machine: `/Users/stevejs/gutenberg_texts/7/3/730/730-0.txt.norm_sm_sents` generated
 - [ ] Manual validation of Oliver Twist `.norm_sm_sents` output shows proper dialog sentence splitting

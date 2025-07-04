@@ -1,0 +1,61 @@
+{
+  "category": "dialog_ends",
+  "description": "Patterns that end dialog sections",
+  "rules": [
+    {
+      "id": "hard_dialog_end",
+      "description": "Dialog ending with sentence punctuation + close + space + capital",
+      "end_chars": [".", "!", "?"],
+      "separators": [" ", "\t"],
+      "start_chars": ["A", "B", "H", "S"],
+      "context_template": "Dialog content here{end}\"{sep}{start}nother sentence followed.",
+      "expected_match_type": "DialogEnd",
+      "expected_next_state": "Narrative",
+      "creates_sentence_boundary": true,
+      "validated": false,
+      "current_state": "DialogDoubleQuote"
+    },
+    {
+      "id": "soft_dialog_end",
+      "description": "Dialog ending with just close quote - soft transition",
+      "end_chars": [""],
+      "separators": [""],
+      "start_chars": ["\"", "'", "\u201D", "\u2019"],
+      "context_template": "Dialog content here{end}{sep}{start} said the narrator.",
+      "expected_match_type": "DialogEnd",
+      "expected_next_state": "Narrative",
+      "creates_sentence_boundary": false,
+      "validated": false,
+      "current_state": "DialogDoubleQuote",
+      "notes": "Should NOT create sentence boundary - just state transition"
+    },
+    {
+      "id": "parenthetical_end",
+      "description": "Parenthetical dialog ending",
+      "end_chars": [".", "!", "?"],
+      "separators": [" ", "\t"],
+      "start_chars": ["A", "B", "H", "S"],
+      "context_template": "Parenthetical content{end}){sep}{start}nother sentence followed.",
+      "expected_match_type": "DialogEnd",
+      "expected_next_state": "Narrative",
+      "creates_sentence_boundary": true,
+      "validated": false,
+      "current_state": "DialogParenthheticalRound"
+    }
+  ],
+  "negative_rules": [
+    {
+      "id": "quote_in_narrative",
+      "description": "Quote character in narrative context - should not end dialog",
+      "end_chars": [""],
+      "separators": [""],
+      "start_chars": ["\"", "'"],
+      "context_template": "The sign said {end}{sep}{start}Exit{start} in bold letters.",
+      "expected_match_type": "NO_MATCH",
+      "expected_next_state": "NO_MATCH",
+      "creates_sentence_boundary": false,
+      "validated": false,
+      "current_state": "Narrative"
+    }
+  ]
+}

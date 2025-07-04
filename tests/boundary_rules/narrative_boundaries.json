@@ -1,0 +1,92 @@
+{
+  "category": "narrative_boundaries",
+  "description": "Sentence boundaries in narrative text",
+  "rules": [
+    {
+      "id": "basic_narrative_boundary",
+      "description": "Standard sentence ending with punctuation + space + capital letter",
+      "end_chars": [".", "!", "?"],
+      "separators": [" ", "\t"],
+      "start_chars": ["A"],
+      "context_template": "He walked to the door{end}{sep}{start}nother thought crossed his mind.",
+      "expected_match_type": "NarrativeGestureBoundary",
+      "expected_next_state": "Narrative",
+      "creates_sentence_boundary": true,
+      "validated": false
+    },
+    {
+      "id": "narrative_to_quote",
+      "description": "Narrative sentence ending before quoted dialog",
+      "end_chars": [".", "!", "?"],
+      "separators": [" ", "\t"],
+      "start_chars": ["\"", "'", "\u201C", "\u2018"],
+      "context_template": "She turned around{end}{sep}{start}Hello there,\" she said.",
+      "expected_match_type": "NarrativeGestureBoundary", 
+      "expected_next_state": "Narrative",
+      "creates_sentence_boundary": true,
+      "validated": false
+    },
+    {
+      "id": "narrative_to_parenthetical",
+      "description": "Narrative sentence ending before parenthetical",
+      "end_chars": [".", "!", "?"],
+      "separators": [" ", "\t"],
+      "start_chars": ["(", "[", "{"],
+      "context_template": "The meeting was over{end}{sep}{start}He had succeeded beyond his wildest dreams.)",
+      "expected_match_type": "NarrativeGestureBoundary",
+      "expected_next_state": "Narrative", 
+      "creates_sentence_boundary": true,
+      "validated": false
+    },
+    {
+      "id": "hard_separator_boundary",
+      "description": "Hard separator with double newline",
+      "end_chars": [".", "!", "?"],
+      "separators": ["\n\n"],
+      "start_chars": ["A", "\"", "("],
+      "context_template": "End of first paragraph{end}{sep}{start}eginning of second paragraph.",
+      "expected_match_type": "NarrativeGestureBoundary",
+      "expected_next_state": "Narrative",
+      "creates_sentence_boundary": true,
+      "validated": false
+    }
+  ],
+  "negative_rules": [
+    {
+      "id": "no_separator_boundary",
+      "description": "Punctuation directly followed by letter - should NOT match",
+      "end_chars": [".", "!", "?"],
+      "separators": [""],
+      "start_chars": ["A", "a"],
+      "context_template": "Dr{end}{sep}{start}lbert Einstein was brilliant.",
+      "expected_match_type": "NO_MATCH",
+      "expected_next_state": "NO_MATCH",
+      "creates_sentence_boundary": false,
+      "validated": false
+    },
+    {
+      "id": "lowercase_start_boundary",
+      "description": "Punctuation + space + lowercase - should NOT match",
+      "end_chars": [".", "!", "?"],
+      "separators": [" ", "\t"],
+      "start_chars": ["a", "b", "c"],
+      "context_template": "The abbreviation etc{end}{sep}{start}lways confuses people.",
+      "expected_match_type": "NO_MATCH",
+      "expected_next_state": "NO_MATCH",
+      "creates_sentence_boundary": false,
+      "validated": false
+    },
+    {
+      "id": "number_start_boundary",
+      "description": "Punctuation + space + number - should NOT match",
+      "end_chars": [".", "!", "?"],
+      "separators": [" ", "\t"],
+      "start_chars": ["1", "2", "9"],
+      "context_template": "The price was $3{end}{sep}{start}5 dollars total.",
+      "expected_match_type": "NO_MATCH", 
+      "expected_next_state": "NO_MATCH",
+      "creates_sentence_boundary": false,
+      "validated": false
+    }
+  ]
+}
