@@ -49,3 +49,8 @@ harness = false
 [[bench]]
 name = "dfa_comparison_bench"
 harness = false
+
+[[bench]]
+name = "file_by_file_bench"
+harness = false
+

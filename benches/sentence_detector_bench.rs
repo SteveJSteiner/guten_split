@@ -2,14 +2,13 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughpu
 use rs_sft_sentences::discovery;
 #[allow(unused_imports)]
 use rs_sft_sentences::reader;
-use rs_sft_sentences::sentence_detector::{DetectedSentence, Span, SentenceBoundaryRules, SentenceDetector, SentenceDetectorDFA};
+use rs_sft_sentences::sentence_detector::{
+    DetectedSentence, Span, SentenceBoundaryRules, SentenceDetector, SentenceDetectorDFA, SentenceDetectorDialog
+};
 use std::path::PathBuf;
 use regex_automata::meta::Regex;
 
-// Import dialog state machine for benchmarking
-mod dialog_state_machine_exploration {
-    include!("../tests/dialog_state_machine_exploration.rs");
-}
+// Dialog state machine now officially part of the library
 
 const SIMPLE_TEXT: &str = "Hello world. This is a test. How are you?";
 const COMPLEX_TEXT: &str = r#"
@@ -272,26 +271,8 @@ fn detect_sentences_multipattern_benchmark(text: &str) -> Result<Vec<DetectedSen
 // Dialog State Machine Strategy for Benchmark
 // WHY: Test performance of dialog-aware sentence boundary detection with coalescing
 fn detect_sentences_dialog_state_machine_benchmark(text: &str) -> Result<Vec<DetectedSentence>, Box<dyn std::error::Error>> {
-    use dialog_state_machine_exploration::DialogStateMachine;
-    
-    let dialog_machine = DialogStateMachine::new()?;
-    let dialog_sentences = dialog_machine.detect_sentences(text)?;
-    
-    // Convert from dialog state machine format to benchmark format
-    let mut sentences = Vec::new();
-    for (index, sentence) in dialog_sentences.iter().enumerate() {
-        sentences.push(DetectedSentence {
-            index,
-            normalized_content: sentence.content.clone(),
-            span: Span {
-                start_line: sentence.start_line.into(),
-                start_col: sentence.start_col.into(),
-                end_line: sentence.end_line.into(),
-                end_col: sentence.end_col.into(),
-            },
-        });
-    }
-    
+    let dialog_detector = SentenceDetectorDialog::new()?;
+    let sentences = dialog_detector.detect_sentences(text)?;
     Ok(sentences)
 }
 
@@ -357,139 +338,100 @@ fn bench_sentence_detection(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_gutenberg_throughput(c: &mut Criterion) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-
-    // Discover and read files
-    let (all_text, char_count, _file_info) = rt.block_on(async {
-        let mirror_dir = std::env::var("GUTENBERG_MIRROR_DIR")
-            .unwrap_or_else(|_| {
-                let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-                format!("{}/gutenberg_texts", home)
-            });
-        let root_dir = PathBuf::from(mirror_dir);
-
-        if !root_dir.exists() {
-            eprintln!("Gutenberg mirror directory {:?} does not exist, skipping throughput benchmark.", root_dir);
-            return (String::new(), 0, Vec::new());
-        }
-
-        let discovery_config = discovery::DiscoveryConfig::default();
-        let discovered_files = discovery::collect_discovered_files(&root_dir, discovery_config)
-            .await
-            .unwrap_or_else(|_| Vec::new());
-
-        let valid_files: Vec<_> = discovered_files
-            .iter()
-            .filter(|f| f.is_valid_utf8 && f.error.is_none())
-            .take(10) // Take first 10 valid files
-            .collect();
-
-        if valid_files.is_empty() {
-            eprintln!("No valid files found for throughput benchmark");
-            return (String::new(), 0, Vec::new());
-        }
-
-        let mut content = String::new();
-        let mut file_info = Vec::new();
-        
-        println!("=== Benchmark Data Transparency ===");
-        println!("Processing {} files:", valid_files.len());
-        
-        for file in &valid_files {
-            if let Ok(file_content) = tokio::fs::read_to_string(&file.path).await {
-                let file_bytes = file_content.len();
-                let file_chars = file_content.chars().count();
-                
-                println!("  {:?}: {} bytes, {} characters", file.path, file_bytes, file_chars);
-                file_info.push((file.path.clone(), file_bytes, file_chars));
-                content.push_str(&file_content);
-            }
-        }
-        
-        let total_chars = content.chars().count();
-        println!("Total: {} files, {} bytes, {} characters", valid_files.len(), content.len(), total_chars);
-        println!("======================================");
-        
-        (content, total_chars, file_info)
-    });
-
-    if all_text.is_empty() {
-        eprintln!("No content read for throughput benchmark, skipping.");
-        return;
-    }
-
-    let mut group = c.benchmark_group("gutenberg_throughput");
-    group.throughput(Throughput::Elements(char_count as u64));
-
-    // Create manual FST detector
-    let manual_detector = SentenceDetector::with_default_rules().unwrap();
+fn bench_dual_api_comparison(c: &mut Criterion) {
+    let mut group = c.benchmark_group("dual_api_comparison");
+    
+    let detector = SentenceDetector::with_default_rules().unwrap();
     let dfa_detector = SentenceDetectorDFA::new().unwrap();
-
-    // Validate equivalent work by comparing sentence detection results
-    println!("=== Benchmark Work Equivalence Validation ===");
+    let dialog_detector = SentenceDetectorDialog::new().unwrap();
     
-    let manual_result = manual_detector.detect_sentences(&all_text).unwrap();
-    let dfa_result = dfa_detector.detect_sentences(&all_text).unwrap();
-    let dialog_result = detect_sentences_dialog_state_machine_benchmark(&all_text).unwrap();
-    
-    println!("Manual FST: {} sentences detected", manual_result.len());
-    println!("DFA: {} sentences detected", dfa_result.len());
-    println!("Dialog State Machine: {} sentences detected", dialog_result.len());
-    
-    // Calculate average sentence lengths for comparison
-    let manual_avg_len = if manual_result.is_empty() { 0.0 } else {
-        manual_result.iter().map(|s| s.normalized_content.chars().count()).sum::<usize>() as f64 / manual_result.len() as f64
-    };
-    let dfa_avg_len = if dfa_result.is_empty() { 0.0 } else {
-        dfa_result.iter().map(|s| s.normalized_content.chars().count()).sum::<usize>() as f64 / dfa_result.len() as f64
-    };
-    let dialog_avg_len = if dialog_result.is_empty() { 0.0 } else {
-        dialog_result.iter().map(|s| s.normalized_content.chars().count()).sum::<usize>() as f64 / dialog_result.len() as f64
-    };
-    
-    println!("Average sentence length:");
-    println!("  Manual FST: {:.1} characters", manual_avg_len);
-    println!("  DFA: {:.1} characters", dfa_avg_len);
-    println!("  Dialog State Machine: {:.1} characters", dialog_avg_len);
-    
-    // Check for significant differences that would indicate non-equivalent work
-    let max_sentences = manual_result.len().max(dfa_result.len()).max(dialog_result.len());
-    let min_sentences = manual_result.len().min(dfa_result.len()).min(dialog_result.len());
-    let sentence_variance = if max_sentences > 0 {
-        ((max_sentences - min_sentences) as f64 / max_sentences as f64) * 100.0
-    } else {
-        0.0
-    };
-    
-    println!("Sentence count variance: {:.1}%", sentence_variance);
-    if sentence_variance > 10.0 {
-        println!("⚠️  WARNING: >10% variance suggests non-equivalent work!");
-    } else {
-        println!("✅ Sentence counts are comparable (≤10% variance)");
-    }
-    println!("==============================================");
-
-    group.bench_function("manual_fst_chars_per_sec", |b| {
+    // Test with the long text fixture
+    group.bench_function("fst_borrowed_api", |b| {
         b.iter(|| {
-            manual_detector.detect_sentences(black_box(&all_text)).unwrap();
+            detector.detect_sentences_borrowed(black_box(LONG_TEXT)).unwrap();
         })
     });
-
-    group.bench_function("dfa_chars_per_sec", |b| {
+    
+    group.bench_function("fst_owned_api", |b| {
         b.iter(|| {
-            dfa_detector.detect_sentences(black_box(&all_text)).unwrap();
+            detector.detect_sentences_owned(black_box(LONG_TEXT)).unwrap();
         })
     });
-
-    group.bench_function("dialog_state_machine_chars_per_sec", |b| {
+    
+    group.bench_function("fst_legacy_api", |b| {
         b.iter(|| {
-            detect_sentences_dialog_state_machine_benchmark(black_box(&all_text)).unwrap();
+            detector.detect_sentences(black_box(LONG_TEXT)).unwrap();
         })
     });
-
+    
+    group.bench_function("dfa_borrowed_api", |b| {
+        b.iter(|| {
+            dfa_detector.detect_sentences_borrowed(black_box(LONG_TEXT)).unwrap();
+        })
+    });
+    
+    group.bench_function("dfa_owned_api", |b| {
+        b.iter(|| {
+            dfa_detector.detect_sentences_owned(black_box(LONG_TEXT)).unwrap();
+        })
+    });
+    
+    group.bench_function("dfa_legacy_api", |b| {
+        b.iter(|| {
+            dfa_detector.detect_sentences(black_box(LONG_TEXT)).unwrap();
+        })
+    });
+    
+    // Dialog detector benchmarks
+    group.bench_function("dialog_borrowed_api", |b| {
+        b.iter(|| {
+            dialog_detector.detect_sentences_borrowed(black_box(LONG_TEXT)).unwrap();
+        })
+    });
+    
+    group.bench_function("dialog_owned_api", |b| {
+        b.iter(|| {
+            dialog_detector.detect_sentences_owned(black_box(LONG_TEXT)).unwrap();
+        })
+    });
+    
+    group.bench_function("dialog_legacy_api", |b| {
+        b.iter(|| {
+            dialog_detector.detect_sentences(black_box(LONG_TEXT)).unwrap();
+        })
+    });
+    
+    // Benchmark normalization buffer reuse pattern
+    group.bench_function("borrowed_with_buffer_reuse", |b| {
+        b.iter(|| {
+            let sentences = detector.detect_sentences_borrowed(black_box(LONG_TEXT)).unwrap();
+            let mut buffer = String::new();
+            let mut normalized = Vec::with_capacity(sentences.len());
+            
+            for sentence in sentences {
+                sentence.normalize_into(&mut buffer);
+                normalized.push(buffer.clone());
+            }
+            black_box(normalized);
+        })
+    });
+    
+    // Compare against convenience method
+    group.bench_function("convenience_normalized_api", |b| {
+        b.iter(|| {
+            detector.detect_sentences_normalized(black_box(LONG_TEXT)).unwrap();
+        })
+    });
+    
     group.finish();
 }
 
-criterion_group!(benches, bench_sentence_detection, bench_gutenberg_throughput);
+fn bench_gutenberg_throughput(c: &mut Criterion) {
+    // WHY: Replaced O(n^2) concatenation with proper file-by-file processing
+    // This benchmark now uses the new file_by_file_bench.rs for realistic measurements
+    eprintln!("DEPRECATED: Use 'cargo bench file_by_file_bench' for realistic file-by-file processing benchmarks");
+    eprintln!("This benchmark has been replaced to fix O(n^2) concatenation issues");
+}
+
+criterion_group!(benches, bench_sentence_detection, bench_dual_api_comparison, bench_gutenberg_throughput);
 criterion_main!(benches);
