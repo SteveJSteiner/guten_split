@@ -324,14 +324,14 @@ impl SentenceDetector {
 
 /// DFA-based sentence detector for performance comparison
 /// Uses regex-automata dense DFA for O(n) sentence boundary detection
-#[cfg_attr(test, allow(dead_code))]
+#[allow(dead_code)]
 pub struct SentenceDetectorDFA {
     /// Compiled DFA for sentence boundary pattern matching
     dfa: DFA<Vec<u32>>,
 }
 
 /// Position counter for single-pass O(n) tracking
-#[cfg_attr(test, allow(dead_code))]
+#[allow(dead_code)]
 struct PositionCounter {
     /// Current byte position in text
     byte_pos: usize,
@@ -344,7 +344,7 @@ struct PositionCounter {
 }
 
 impl PositionCounter {
-    #[cfg_attr(test, allow(dead_code))]
+    #[allow(dead_code)]
     fn new() -> Self {
         Self {
             byte_pos: 0,
@@ -356,7 +356,7 @@ impl PositionCounter {
     
     /// Advance counter to target byte position, updating line/col correctly
     /// WHY: O(1) amortized - only processes bytes between current and target position
-    #[cfg_attr(test, allow(dead_code))]
+    #[allow(dead_code)]
     fn advance_to_byte(&mut self, text_bytes: &[u8], target_byte_pos: usize) {
         while self.byte_pos < target_byte_pos && self.byte_pos < text_bytes.len() {
             let byte = text_bytes[self.byte_pos];
@@ -383,7 +383,7 @@ impl PositionCounter {
 impl SentenceDetectorDFA {
     /// Create new DFA-based sentence detector with basic pattern [.!?]\s+[A-Z]
     /// WHY: simplified pattern for baseline performance comparison
-    #[cfg_attr(test, allow(dead_code))]
+    #[allow(dead_code)]
     pub fn new() -> Result<Self> {
         info!("Compiling DFA for sentence boundary detection");
         
@@ -398,7 +398,7 @@ impl SentenceDetectorDFA {
     
     /// Detect sentence boundaries in text using DFA approach with O(n) streaming
     /// Returns same format as manual detector for comparison
-    #[cfg_attr(test, allow(dead_code))]
+    #[allow(dead_code)]
     pub fn detect_sentences(&self, text: &str) -> Result<Vec<DetectedSentence>> {
         debug!("Starting DFA sentence detection on {} characters", text.len());
         
@@ -515,7 +515,7 @@ impl SentenceDetectorDFA {
     
     /// Normalize sentence by removing interior hard line breaks
     /// WHY: same normalization logic as manual implementation for consistency
-    #[cfg_attr(test, allow(dead_code))]
+    #[allow(dead_code)]
     fn normalize_sentence(&self, text: &str) -> String {
         let mut result = String::with_capacity(text.len());
         let mut chars = text.chars().peekable();
@@ -554,7 +554,7 @@ impl SentenceDetectorDFA {
     }
     
     /// Format detected sentence for output (same as manual implementation)
-    #[cfg_attr(test, allow(dead_code))]
+    #[allow(dead_code)]
     pub fn format_sentence_output(&self, sentence: &DetectedSentence) -> String {
         format!(
             "{}\t{}\t({},{},{},{})",

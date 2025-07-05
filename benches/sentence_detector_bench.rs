@@ -20,6 +20,7 @@ const LONG_TEXT: &str = include_str!("../tests/fixtures/long_text.txt");
 
 // Dictionary Post-Processing Strategy for Benchmark
 // WHY: Test performance impact of abbreviation handling vs baseline DFA
+#[allow(dead_code)]
 fn detect_sentences_dictionary_benchmark(text: &str) -> Result<Vec<DetectedSentence>, Box<dyn std::error::Error>> {
     let abbreviations = [
         "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
@@ -93,6 +94,7 @@ fn detect_sentences_dictionary_benchmark(text: &str) -> Result<Vec<DetectedSente
 
 // Enhanced Dictionary Strategy for Benchmark - Full Feature Support
 // WHY: Matches manual detector functionality while adding abbreviation filtering
+#[allow(dead_code)]
 fn detect_sentences_dictionary_enhanced_benchmark(text: &str) -> Result<Vec<DetectedSentence>, Box<dyn std::error::Error>> {
     // For benchmark performance comparison, use same simple pattern as dictionary strategy
     // but add abbreviation filtering. Complex patterns would require careful UTF-8 handling.
@@ -101,6 +103,7 @@ fn detect_sentences_dictionary_enhanced_benchmark(text: &str) -> Result<Vec<Dete
 
 // Context Analysis Strategy for Benchmark
 // WHY: Benchmark sophisticated context analysis approach  
+#[allow(dead_code)]
 fn detect_sentences_context_analysis_benchmark(text: &str) -> Result<Vec<DetectedSentence>, Box<dyn std::error::Error>> {
     let abbreviations = [
         "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
@@ -175,6 +178,7 @@ fn detect_sentences_context_analysis_benchmark(text: &str) -> Result<Vec<Detecte
 
 // Multi-Pattern DFA Strategy for Benchmark
 // WHY: Test performance with combined pattern DFA approach
+#[allow(dead_code)]
 fn detect_sentences_multipattern_benchmark(text: &str) -> Result<Vec<DetectedSentence>, Box<dyn std::error::Error>> {
     use regex_automata::dfa::{dense::DFA, Automaton};
     
@@ -357,7 +361,7 @@ fn bench_gutenberg_throughput(c: &mut Criterion) {
     let rt = tokio::runtime::Runtime::new().unwrap();
 
     // Discover and read files
-    let all_text = rt.block_on(async {
+    let (all_text, char_count, _file_info) = rt.block_on(async {
         let mirror_dir = std::env::var("GUTENBERG_MIRROR_DIR")
             .unwrap_or_else(|_| {
                 let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
@@ -367,7 +371,7 @@ fn bench_gutenberg_throughput(c: &mut Criterion) {
 
         if !root_dir.exists() {
             eprintln!("Gutenberg mirror directory {:?} does not exist, skipping throughput benchmark.", root_dir);
-            return String::new();
+            return (String::new(), 0, Vec::new());
         }
 
         let discovery_config = discovery::DiscoveryConfig::default();
@@ -379,21 +383,35 @@ fn bench_gutenberg_throughput(c: &mut Criterion) {
             .iter()
             .filter(|f| f.is_valid_utf8 && f.error.is_none())
             .take(10) // Take first 10 valid files
-            .map(|f| f.path.clone())
             .collect();
 
         if valid_files.is_empty() {
             eprintln!("No valid files found for throughput benchmark");
-            return String::new();
+            return (String::new(), 0, Vec::new());
         }
 
         let mut content = String::new();
-        for path in valid_files {
-            if let Ok(file_content) = tokio::fs::read_to_string(path).await {
+        let mut file_info = Vec::new();
+        
+        println!("=== Benchmark Data Transparency ===");
+        println!("Processing {} files:", valid_files.len());
+        
+        for file in &valid_files {
+            if let Ok(file_content) = tokio::fs::read_to_string(&file.path).await {
+                let file_bytes = file_content.len();
+                let file_chars = file_content.chars().count();
+                
+                println!("  {:?}: {} bytes, {} characters", file.path, file_bytes, file_chars);
+                file_info.push((file.path.clone(), file_bytes, file_chars));
                 content.push_str(&file_content);
             }
         }
-        content
+        
+        let total_chars = content.chars().count();
+        println!("Total: {} files, {} bytes, {} characters", valid_files.len(), content.len(), total_chars);
+        println!("======================================");
+        
+        (content, total_chars, file_info)
     });
 
     if all_text.is_empty() {
@@ -402,14 +420,29 @@ fn bench_gutenberg_throughput(c: &mut Criterion) {
     }
 
     let mut group = c.benchmark_group("gutenberg_throughput");
-    group.throughput(Throughput::Bytes(all_text.len() as u64));
+    group.throughput(Throughput::Elements(char_count as u64));
+
+    // Create manual FST detector
+    let manual_detector = SentenceDetector::with_default_rules().unwrap();
+    let dfa_detector = SentenceDetectorDFA::new().unwrap();
+
+    group.bench_function("manual_fst_chars_per_sec", |b| {
+        b.iter(|| {
+            manual_detector.detect_sentences(black_box(&all_text)).unwrap();
+        })
+    });
+
+    group.bench_function("dfa_chars_per_sec", |b| {
+        b.iter(|| {
+            dfa_detector.detect_sentences(black_box(&all_text)).unwrap();
+        })
+    });
 
     group.bench_function("dialog_state_machine_chars_per_sec", |b| {
         b.iter(|| {
             detect_sentences_dialog_state_machine_benchmark(black_box(&all_text)).unwrap();
         })
     });
-
 
     group.finish();
 }

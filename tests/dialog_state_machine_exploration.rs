@@ -767,6 +767,7 @@ mod tests {
         run_boundary_validation_workflow(true, 162);
     }
     
+    #[allow(dead_code)]
     fn run_boundary_validation_workflow(populate_baseline: bool, limit: usize) {
         use serde::{Deserialize, Serialize};
         use regex_automata::Input;
