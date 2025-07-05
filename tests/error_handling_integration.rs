@@ -68,7 +68,7 @@ async fn test_pipeline_empty_files() {
     assert_eq!(content, "");
     
     // Sentence detector should handle empty content
-    let detector = sentence_detector::SentenceDetector::with_default_rules()
+    let detector = sentence_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
     let sentences = detector.detect_sentences(&content)
         .expect("Sentence detection on empty content should succeed");
@@ -90,7 +90,7 @@ async fn test_pipeline_whitespace_only() {
     let content = reader::read_file_async(&file_path).await
         .expect("Reading whitespace file should succeed");
     
-    let detector = sentence_detector::SentenceDetector::with_default_rules()
+    let detector = sentence_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
     let sentences = detector.detect_sentences(&content)
         .expect("Sentence detection on whitespace should succeed");
@@ -112,7 +112,7 @@ async fn test_pipeline_punctuation_only() {
     let content = reader::read_file_async(&file_path).await
         .expect("Reading punctuation file should succeed");
     
-    let detector = sentence_detector::SentenceDetector::with_default_rules()
+    let detector = sentence_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
     let sentences = detector.detect_sentences(&content)
         .expect("Sentence detection on punctuation should succeed");
@@ -158,7 +158,7 @@ async fn test_pipeline_nested_directories() {
     assert_eq!(files.len(), 3, "Should find files in all nested directories");
     
     // Verify each file can be processed
-    let detector = sentence_detector::SentenceDetector::with_default_rules()
+    let detector = sentence_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
     
     for file_path in files {
@@ -189,7 +189,7 @@ async fn test_pipeline_long_paths() {
     let content = reader::read_file_async(&files[0]).await
         .expect("Should read file with long path");
     
-    let detector = sentence_detector::SentenceDetector::with_default_rules()
+    let detector = sentence_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
     let sentences = detector.detect_sentences(&content)
         .expect("Sentence detection should succeed");

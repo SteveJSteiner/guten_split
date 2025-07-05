@@ -1,6 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use rs_sft_sentences::discovery;
-use rs_sft_sentences::sentence_detector::{SentenceDetector, SentenceDetectorDFA};
 use rs_sft_sentences::SentenceDetectorDialog;
 use std::path::PathBuf;
 use std::fs::File;
@@ -74,7 +73,7 @@ fn get_sample_files() -> Vec<PathBuf> {
 }
 
 fn process_files_borrowed_api(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn std::error::Error>> {
-    let detector = SentenceDetector::with_default_rules()?;
+    let detector = SentenceDetectorDialog::new()?;
     let mut results = Vec::new();
     
     for file_path in files {
@@ -100,7 +99,7 @@ fn process_files_borrowed_api(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<
 }
 
 fn process_files_owned_api(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn std::error::Error>> {
-    let detector = SentenceDetector::with_default_rules()?;
+    let detector = SentenceDetectorDialog::new()?;
     let mut results = Vec::new();
     
     for file_path in files {
@@ -150,7 +149,7 @@ fn process_files_dialog_borrowed(files: &[PathBuf]) -> Result<Vec<FileResult>, B
 }
 
 fn process_files_dfa_borrowed(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn std::error::Error>> {
-    let detector = SentenceDetectorDFA::new()?;
+    let detector = SentenceDetectorDialog::new()?;
     let mut results = Vec::new();
     
     for file_path in files {

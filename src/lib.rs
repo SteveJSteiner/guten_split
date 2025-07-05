@@ -4,8 +4,6 @@ pub mod sentence_detector;
 
 // Re-export main types for convenient access
 pub use sentence_detector::{
-    SentenceDetector, SentenceDetectorDFA, 
     DetectedSentence, DetectedSentenceBorrowed, DetectedSentenceOwned, 
-    Span, SentenceBoundaryRules
+    Span, SentenceDetectorDialog
 };
-pub use sentence_detector::dialog_detector::SentenceDetectorDialog;

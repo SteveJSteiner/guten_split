@@ -28,7 +28,6 @@ memmap2 = { version = "0.9", optional = true }
 glob = "0.3"
 futures = "0.3"
 tokio-stream = { version = "0.1", features = ["fs"] }
-fst = "0.4.7"
 
 [dev-dependencies]
 tempfile = "3.0"
@@ -42,13 +41,7 @@ mmap = ["memmap2"]
 name = "reader_bench"
 harness = false
 
-[[bench]]
-name = "sentence_detector_bench"
-harness = false
 
-[[bench]]
-name = "dfa_comparison_bench"
-harness = false
 
 [[bench]]
 name = "file_by_file_bench"

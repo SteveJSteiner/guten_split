@@ -26,7 +26,7 @@ async fn test_pipeline_simple_text() {
     assert_eq!(content, SIMPLE_TEXT);
     
     // Test sentence detection
-    let detector = sentence_detector::SentenceDetector::with_default_rules()
+    let detector = sentence_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
     let sentences = detector.detect_sentences(&content)
         .expect("Sentence detection should succeed");
@@ -49,7 +49,7 @@ async fn test_pipeline_punctuation_simple_rules() {
         .expect("Discovery should succeed");
     let content = reader::read_file_async(&files[0]).await
         .expect("File reading should succeed");
-    let detector = sentence_detector::SentenceDetector::with_default_rules()
+    let detector = sentence_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
     let sentences = detector.detect_sentences(&content)
         .expect("Sentence detection should succeed");
@@ -73,7 +73,7 @@ async fn test_pipeline_multiple_files() {
     assert_eq!(files.len(), 2);
     
     // Process all files
-    let detector = sentence_detector::SentenceDetector::with_default_rules()
+    let detector = sentence_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
     
     for file_path in files {
