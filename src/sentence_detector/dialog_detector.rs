@@ -202,6 +202,7 @@ pub enum MatchType {
     NarrativeGestureBoundary,
     DialogOpen,
     DialogEnd,
+    DialogSoftEnd,
     HardSeparator,
 }
 
@@ -438,6 +439,11 @@ impl DialogStateMachine {
                         
                         sentence_start_byte = next_sentence_start_byte;
                     }
+                    MatchType::DialogSoftEnd => {
+                        // Soft dialog end - state transition only, no sentence boundary
+                        // Continue the current sentence through the dialog close
+                        // No sentence recorded, just state change
+                    }
                     MatchType::HardSeparator => {
                         // Hard separator - record sentence and transition to Unknown
                         if sentence_start_byte.0 < match_start_byte.0 {
@@ -571,8 +577,8 @@ impl DialogStateMachine {
             (MatchType::DialogEnd, DialogState::Narrative)
         } else {
             // SOFT_END: Just dialog close, creates soft transition, not hard boundary
-            // Return DialogEnd but maintain dialog state for soft transition
-            (MatchType::DialogEnd, DialogState::Narrative)
+            // Return DialogSoftEnd and transition to Narrative but don't create sentence boundary
+            (MatchType::DialogSoftEnd, DialogState::Narrative)
         }
     }
     
@@ -852,5 +858,42 @@ mod tests {
         assert_eq!(sentences.len(), 2);
         assert!(sentences[0].raw().contains("Dr. Smith will see you"));
         assert!(sentences[1].raw().contains("She nodded"));
+    }
+
+    #[test]
+    fn test_soft_dialog_transitions() {
+        let detector = SentenceDetectorDialog::new().unwrap();
+        
+        // Test case 1: comma + quote should soft transition, continue sentence
+        let text = "\"Hello,\" she said quietly.";
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        // Should be one sentence - soft transition should continue
+        assert_eq!(sentences.len(), 1, "Soft transition with comma should continue sentence");
+        assert!(sentences[0].raw().contains("Hello") && sentences[0].raw().contains("she said"));
+        
+        // Test case 2: quote alone should soft transition
+        let text = "\"Yes\" followed by more narrative.";
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        // Should be one sentence - soft transition should continue
+        assert_eq!(sentences.len(), 1, "Soft transition with quote alone should continue sentence");
+        
+        // Test case 3: parenthetical close should soft transition
+        let text = "(thinking quietly) and then he spoke.";
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        // Should be one sentence - soft transition should continue
+        assert_eq!(sentences.len(), 1, "Soft transition with parenthetical should continue sentence");
+    }
+
+    #[test]
+    fn test_hard_dialog_transitions() {
+        let detector = SentenceDetectorDialog::new().unwrap();
+        
+        // Test case: exclamation + space + capital should hard transition, create boundary
+        let text = "\"Wait!\" he shouted loudly. Then he left.";
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        // Should be two sentences - hard transition should create boundary
+        assert_eq!(sentences.len(), 2, "Hard transition should create sentence boundary");
+        assert!(sentences[0].raw().contains("Wait!") && sentences[0].raw().contains("he shouted"));
+        assert!(sentences[1].raw().contains("Then he left"));
     }
 }
