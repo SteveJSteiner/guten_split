@@ -356,14 +356,7 @@ impl DialogStateMachine {
                 // Determine what type of match this is and next state
                 let matched_text = &text[match_start_byte.0..match_end_byte.0];
                 
-                // DIAGNOSTIC: State machine tracing
-                println!("DIAG: State={:?}, Position={}, Match='{}', Full_context='{}'", 
-                    current_state, position_byte.0, matched_text, 
-                    &text[position_byte.0.saturating_sub(10)..match_end_byte.0.min(text.len()).saturating_add(10).min(text.len())]);
-                
                 let (match_type, next_state) = self.classify_match(matched_text, &current_state);
-                
-                println!("DIAG: Classified as {:?} -> {:?}", match_type, next_state);
                 
                 match match_type {
                     MatchType::NarrativeGestureBoundary => {

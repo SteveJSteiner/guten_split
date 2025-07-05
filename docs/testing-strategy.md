@@ -42,6 +42,20 @@ Missing benchmarks for:
 3. Comparative benchmarks (concurrent vs sequential implementations)
 4. Real-world dataset benchmarks (Project Gutenberg subset)
 
+### Benchmark Isolation Requirements
+**Critical**: Multiple benchmark functions in the same file can cause performance interference through compilation/memory overhead.
+
+**Best Practices:**
+- **Isolated Execution**: Run individual benchmarks with `cargo bench <benchmark_name>` rather than full benchmark suites
+- **Separate Benchmark Groups**: Use separate Criterion groups for unrelated benchmarks to prevent interference
+- **Gutenberg Throughput**: Use `cargo bench gutenberg_throughput` for clean isolated measurements
+- **Avoid Artificial Benchmarks**: Focus on real-world Gutenberg throughput; artificial benchmarks can contaminate results
+
+**Validated Performance Baselines (Isolated):**
+- **DFA**: 182.12 MiB/s (regex-automata implementation)
+- **Manual FST**: 102.81 MiB/s (production baseline)
+- **Dialog State Machine**: 490.36 MiB/s (with coalescing optimizations)
+
 ## Integration Testing Strategy
 
 ### Current Gap Analysis

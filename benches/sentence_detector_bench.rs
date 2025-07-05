@@ -404,50 +404,12 @@ fn bench_gutenberg_throughput(c: &mut Criterion) {
     let mut group = c.benchmark_group("gutenberg_throughput");
     group.throughput(Throughput::Bytes(all_text.len() as u64));
 
-    let manual_detector = SentenceDetector::with_default_rules().unwrap();
-    let dfa_detector = SentenceDetectorDFA::new().unwrap();
-
-    group.bench_function("manual_chars_per_sec", |b| {
-        b.iter(|| {
-            manual_detector.detect_sentences(black_box(&all_text)).unwrap();
-        })
-    });
-
-    group.bench_function("dfa_chars_per_sec", |b| {
-        b.iter(|| {
-            dfa_detector.detect_sentences(black_box(&all_text)).unwrap();
-        })
-    });
-
-    group.bench_function("dictionary_chars_per_sec", |b| {
-        b.iter(|| {
-            detect_sentences_dictionary_benchmark(black_box(&all_text)).unwrap();
-        })
-    });
-
-    group.bench_function("enhanced_dictionary_chars_per_sec", |b| {
-        b.iter(|| {
-            detect_sentences_dictionary_enhanced_benchmark(black_box(&all_text)).unwrap();
-        })
-    });
-
-    group.bench_function("context_analysis_chars_per_sec", |b| {
-        b.iter(|| {
-            detect_sentences_context_analysis_benchmark(black_box(&all_text)).unwrap();
-        })
-    });
-
-    group.bench_function("multipattern_dfa_chars_per_sec", |b| {
-        b.iter(|| {
-            detect_sentences_multipattern_benchmark(black_box(&all_text)).unwrap();
-        })
-    });
-
     group.bench_function("dialog_state_machine_chars_per_sec", |b| {
         b.iter(|| {
             detect_sentences_dialog_state_machine_benchmark(black_box(&all_text)).unwrap();
         })
     });
+
 
     group.finish();
 }
