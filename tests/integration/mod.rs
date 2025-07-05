@@ -7,7 +7,7 @@ use tempfile::TempDir;
 
 /// Test fixture helper for creating temporary directories with Gutenberg-style files
 pub struct TestFixture {
-    pub temp_dir: TempDir,
+    _temp_dir: TempDir,
     pub root_path: PathBuf,
 }
 
@@ -18,7 +18,7 @@ impl TestFixture {
         let root_path = temp_dir.path().to_path_buf();
         
         Self {
-            temp_dir,
+            _temp_dir: temp_dir,
             root_path,
         }
     }
@@ -60,6 +60,7 @@ impl TestFixture {
     }
     
     /// Create a partial aux file (without trailing newline) for testing
+    #[allow(dead_code)]
     pub fn create_partial_aux_file<P: AsRef<Path>>(&self, source_path: P, content: &str) -> PathBuf {
         let aux_path = self.generate_aux_file_path(source_path);
         // Write content without trailing newline to simulate partial file
@@ -96,6 +97,7 @@ impl TestFixture {
     }
     
     /// Create a cache file with specific content for testing
+    #[allow(dead_code)]
     pub fn create_cache(&self, content: &str) -> PathBuf {
         let cache_path = self.cache_path();
         fs::write(&cache_path, content).expect("Failed to write cache file");
@@ -104,6 +106,7 @@ impl TestFixture {
 }
 
 /// Compare two strings line by line, providing detailed diff on mismatch
+#[allow(dead_code)]
 pub fn assert_golden_file(actual: &str, expected: &str, context: &str) {
     let actual_lines: Vec<&str> = actual.lines().collect();
     let expected_lines: Vec<&str> = expected.lines().collect();

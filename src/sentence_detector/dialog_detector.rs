@@ -207,8 +207,6 @@ pub enum MatchType {
 
 pub struct DialogStateMachine {
     patterns: HashMap<DialogState, Regex>,
-    quote_starts: Regex,
-    paren_starts: Regex,
     abbreviation_checker: AbbreviationChecker,
 }
 
@@ -319,14 +317,8 @@ impl DialogStateMachine {
         patterns.insert(DialogState::DialogParenthheticalSquare, Regex::new(&dialog_paren_square_pattern)?);
         patterns.insert(DialogState::DialogParenthheticalCurly, Regex::new(&dialog_paren_curly_pattern)?);
         
-        // Helper patterns for state transitions
-        let quote_starts = Regex::new(r"[\x22\x27\u{201C}\u{2018}]")?;
-        let paren_starts = Regex::new(r"[\(\[\{]")?;
-        
         Ok(DialogStateMachine {
             patterns,
-            quote_starts,
-            paren_starts,
             abbreviation_checker: AbbreviationChecker::new(),
         })
     }

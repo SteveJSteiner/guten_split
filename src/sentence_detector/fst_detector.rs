@@ -13,8 +13,6 @@ use super::{DetectedSentence, DetectedSentenceBorrowed, DetectedSentenceOwned, S
 pub struct SentenceDetectorFST {
     /// Compiled FST set for pattern matching
     _fst_set: Arc<Set<Vec<u8>>>, 
-    /// Rules used to compile this FST
-    rules: SentenceBoundaryRules,
 }
 
 impl SentenceDetectorFST {
@@ -72,7 +70,6 @@ impl SentenceDetectorFST {
         
         Ok(Self {
             _fst_set: Arc::new(fst_set),
-            rules,
         })
     }
 }

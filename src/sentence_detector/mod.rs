@@ -11,7 +11,7 @@ pub mod abbreviations;
 
 // Re-export core types
 pub use normalization::{normalize_sentence, normalize_sentence_into};
-pub use dialog_detector::SentenceDetectorDialog;
+// pub use dialog_detector::SentenceDetectorDialog;
 pub use abbreviations::AbbreviationChecker;
 
 /// Position in a text file using 1-based indexing as specified in PRD section 2

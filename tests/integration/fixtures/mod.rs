@@ -11,6 +11,7 @@ pub const SIMPLE_EXPECTED: &str = r#"0	Hello world.	(1,1,1,12)
 2	How are you?	(1,29,1,42)"#;
 
 /// Multi-line text with line breaks, quotes, and Unicode
+#[allow(dead_code)]
 pub const COMPLEX_TEXT: &str = r#"Hello world. This is a test sentence.
 
 How are you doing today? I hope you're well!
@@ -24,6 +25,7 @@ Final sentence with émojis 🦀 and Unicode 世界."#;
 
 /// Expected sentence output for COMPLEX_TEXT
 /// WHY: Line breaks within sentences should be normalized to spaces
+#[allow(dead_code)]
 pub const COMPLEX_EXPECTED: &str = r#"0	Hello world.	(1,1,1,12)
 1	This is a test sentence.	(1,13,1,37)
 2	How are you doing today?	(1,38,3,24)
@@ -54,6 +56,7 @@ pub const PUNCTUATION_SIMPLE_EXPECTED: &str = r#"0	Dr.	(1,1,1,3)
 
 /// Expected output for punctuation with COMPLETE rules (end goal)
 /// WHY: Complete rules should properly handle abbreviations and not split incorrectly
+#[allow(dead_code)]
 pub const PUNCTUATION_COMPLETE_EXPECTED: &str = r#"0	Dr. Smith went to the U.S.A. yesterday.	(1,1,1,38)
 1	He said "Hello there!" to Mr. Jones.	(1,40,1,72)
 2	She asked, "How are you?"	(3,1,3,25)
@@ -65,9 +68,11 @@ pub const PUNCTUATION_COMPLETE_EXPECTED: &str = r#"0	Dr. Smith went to the U.S.A
 pub const MINIMAL_TEXT: &str = "Test.";
 
 /// Expected output for minimal text
+#[allow(dead_code)]
 pub const MINIMAL_EXPECTED: &str = "0\tTest.\t(1,1,1,5)";
 
 /// Large text block for throughput testing (500+ sentences)
+#[allow(dead_code)]
 pub fn generate_large_text() -> String {
     let base_sentence = "This is sentence number {}. ";
     let mut result = String::new();
@@ -83,6 +88,7 @@ pub fn generate_large_text() -> String {
 }
 
 /// Generate expected output for large text
+#[allow(dead_code)]
 pub fn generate_large_expected() -> String {
     let mut result = String::new();
     let mut col = 1;

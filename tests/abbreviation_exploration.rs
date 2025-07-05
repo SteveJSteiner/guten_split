@@ -271,7 +271,7 @@ fn detect_sentences_dictionary(text: &str) -> Result<usize, Box<dyn std::error::
         let preceding_text = &text[last_end..potential_end];
         
         // Check if this ends with a known abbreviation
-        let is_abbreviation = abbreviations.iter().any(|abbrev| {
+        let _is_abbreviation = ABBREVIATIONS.iter().any(|abbrev| {
             preceding_text.trim_end().ends_with(abbrev)
         });
         
@@ -302,7 +302,7 @@ fn detect_sentences_dictionary(text: &str) -> Result<usize, Box<dyn std::error::
 // WHY: Returns complete DetectedSentence objects for quality comparison with production DFA
 // Trade-off: More memory allocation but enables proper sentence boundary analysis
 fn detect_sentences_dictionary_full(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
-    let abbreviations = ABBREVIATIONS;
+    let _abbreviations = ABBREVIATIONS;
     
     // Phase 1: Find all potential sentence boundaries using simple pattern
     let pattern = Regex::new(r"[.!?]\s+[A-Z]").unwrap();
@@ -317,11 +317,11 @@ fn detect_sentences_dictionary_full(text: &str) -> Result<Vec<rs_sft_sentences::
         
         // Phase 2: Check if the punctuation is part of an abbreviation that should not be split
         // WHY: Only check the word immediately before the punctuation, not the entire text
-        let is_abbreviation = {
+        let _is_abbreviation = {
             // Find the last word ending with the punctuation
             let words: Vec<&str> = preceding_text.split_whitespace().collect();
             if let Some(last_word) = words.last() {
-                abbreviations.iter().any(|&abbrev| *last_word == abbrev)
+                ABBREVIATIONS.iter().any(|&abbrev| *last_word == abbrev)
             } else {
                 false
             }
@@ -387,7 +387,7 @@ fn detect_sentences_dictionary_full(text: &str) -> Result<Vec<rs_sft_sentences::
 // Forward-Probing Dictionary Strategy - Proper Dialog Handling  
 // WHY: Probes forward to find matching quote close, avoiding abbreviation splits inside dialog
 fn detect_sentences_dictionary_forward_probe(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
-    let abbreviations = ABBREVIATIONS;
+    let _abbreviations = ABBREVIATIONS;
     
     // Use all dialog patterns
     let basic_pattern = Regex::new(r"[.!?]\s+[A-Z]").unwrap();
@@ -422,7 +422,7 @@ fn detect_sentences_dictionary_forward_probe(text: &str) -> Result<Vec<rs_sft_se
         let preceding_text = &text[last_start..potential_end];
         
         // Check if this ends with an abbreviation
-        let is_abbreviation = abbreviations.iter().any(|abbrev| {
+        let _is_abbreviation = ABBREVIATIONS.iter().any(|abbrev| {
             preceding_text.trim_end().ends_with(abbrev)
         });
         
@@ -547,7 +547,7 @@ fn find_matching_dialog_close(text: &str, boundary_pos: usize) -> Option<usize> 
 // WHY: Matches manual detector functionality while adding abbreviation filtering
 // Trade-off: More complex pattern matching but equivalent feature set to manual detector
 fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
-    let abbreviations = ABBREVIATIONS;
+    let _abbreviations = ABBREVIATIONS;
     
     // Use separate patterns to handle each boundary type correctly
     // WHY: Avoids UTF-8 character boundary issues by processing patterns individually
@@ -586,7 +586,7 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<rs_sft_sentenc
     let mut sentence_index = 0;
     let mut last_start = 0;
     
-    for (boundary_start, boundary_end, boundary_type) in boundaries {
+    for (boundary_start, _boundary_end, boundary_type) in boundaries {
         // Find the sentence end position based on boundary type
         let potential_end = match boundary_type {
             "dialog_end" | "dialog_to_quote" => {
@@ -698,7 +698,7 @@ fn find_punctuation_end(text: &str, boundary_start: usize) -> usize {
     let mut char_indices = text[boundary_start..].char_indices();
     
     // Find the first character (punctuation) and return position after it
-    if let Some((_, ch)) = char_indices.next() {
+    if let Some((_, _ch)) = char_indices.next() {
         if let Some((next_byte_offset, _)) = char_indices.next() {
             boundary_start + next_byte_offset
         } else {
@@ -718,7 +718,7 @@ fn find_dialog_end_position(text: &str, boundary_start: usize) -> usize {
     // Skip the punctuation mark
     if let Some((_, punctuation)) = char_indices.next() {
         // Skip the quote character
-        if let Some((_, quote)) = char_indices.next() {
+        if let Some((_, _quote)) = char_indices.next() {
             // Return position after the quote
             if let Some((next_byte_offset, _)) = char_indices.next() {
                 boundary_start + next_byte_offset
@@ -741,7 +741,7 @@ fn find_dialog_end_position(text: &str, boundary_start: usize) -> usize {
 // Trade-off: Most complex logic but potentially highest accuracy on edge cases
 #[cfg_attr(test, allow(dead_code))]
 fn detect_sentences_context_full(text: &str) -> Result<Vec<rs_sft_sentences::DetectedSentence>, Box<dyn std::error::Error>> {
-    let abbreviations = ABBREVIATIONS;
+    let _abbreviations = ABBREVIATIONS;
     
     let mut sentences = Vec::new();
     let mut sentence_index = 0;
@@ -759,7 +759,7 @@ fn detect_sentences_context_full(text: &str) -> Result<Vec<rs_sft_sentences::Det
                 
                 if is_sentence_start {
                     // Advanced context analysis for abbreviations
-                    let is_abbreviation = analyze_abbreviation_context(&chars, i, &abbreviations);
+                    let is_abbreviation = analyze_abbreviation_context(&chars, i, &ABBREVIATIONS);
                     
                     if !is_abbreviation {
                         // Extract sentence

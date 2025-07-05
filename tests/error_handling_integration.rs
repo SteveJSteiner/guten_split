@@ -1,10 +1,10 @@
-use std::path::PathBuf;
+// use std::path::PathBuf;
 use tokio;
 use rs_sft_sentences::{discovery, reader, sentence_detector};
 
 #[path = "integration/mod.rs"]
 mod test_utils;
-use test_utils::{TestFixture, assert_golden_file};
+use test_utils::{TestFixture};
 
 /// Test pipeline behavior with malformed UTF-8 files
 #[tokio::test]
