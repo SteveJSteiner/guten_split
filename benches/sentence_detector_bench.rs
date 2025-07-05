@@ -426,6 +426,50 @@ fn bench_gutenberg_throughput(c: &mut Criterion) {
     let manual_detector = SentenceDetector::with_default_rules().unwrap();
     let dfa_detector = SentenceDetectorDFA::new().unwrap();
 
+    // Validate equivalent work by comparing sentence detection results
+    println!("=== Benchmark Work Equivalence Validation ===");
+    
+    let manual_result = manual_detector.detect_sentences(&all_text).unwrap();
+    let dfa_result = dfa_detector.detect_sentences(&all_text).unwrap();
+    let dialog_result = detect_sentences_dialog_state_machine_benchmark(&all_text).unwrap();
+    
+    println!("Manual FST: {} sentences detected", manual_result.len());
+    println!("DFA: {} sentences detected", dfa_result.len());
+    println!("Dialog State Machine: {} sentences detected", dialog_result.len());
+    
+    // Calculate average sentence lengths for comparison
+    let manual_avg_len = if manual_result.is_empty() { 0.0 } else {
+        manual_result.iter().map(|s| s.normalized_content.chars().count()).sum::<usize>() as f64 / manual_result.len() as f64
+    };
+    let dfa_avg_len = if dfa_result.is_empty() { 0.0 } else {
+        dfa_result.iter().map(|s| s.normalized_content.chars().count()).sum::<usize>() as f64 / dfa_result.len() as f64
+    };
+    let dialog_avg_len = if dialog_result.is_empty() { 0.0 } else {
+        dialog_result.iter().map(|s| s.normalized_content.chars().count()).sum::<usize>() as f64 / dialog_result.len() as f64
+    };
+    
+    println!("Average sentence length:");
+    println!("  Manual FST: {:.1} characters", manual_avg_len);
+    println!("  DFA: {:.1} characters", dfa_avg_len);
+    println!("  Dialog State Machine: {:.1} characters", dialog_avg_len);
+    
+    // Check for significant differences that would indicate non-equivalent work
+    let max_sentences = manual_result.len().max(dfa_result.len()).max(dialog_result.len());
+    let min_sentences = manual_result.len().min(dfa_result.len()).min(dialog_result.len());
+    let sentence_variance = if max_sentences > 0 {
+        ((max_sentences - min_sentences) as f64 / max_sentences as f64) * 100.0
+    } else {
+        0.0
+    };
+    
+    println!("Sentence count variance: {:.1}%", sentence_variance);
+    if sentence_variance > 10.0 {
+        println!("⚠️  WARNING: >10% variance suggests non-equivalent work!");
+    } else {
+        println!("✅ Sentence counts are comparable (≤10% variance)");
+    }
+    println!("==============================================");
+
     group.bench_function("manual_fst_chars_per_sec", |b| {
         b.iter(|| {
             manual_detector.detect_sentences(black_box(&all_text)).unwrap();
