@@ -268,7 +268,7 @@ fn detect_sentences_multipattern_benchmark(text: &str) -> Result<Vec<DetectedSen
 // Dialog State Machine Strategy for Benchmark
 // WHY: Test performance of dialog-aware sentence boundary detection with coalescing
 fn detect_sentences_dialog_state_machine_benchmark(text: &str) -> Result<Vec<DetectedSentence>, Box<dyn std::error::Error>> {
-    use dialog_state_machine_exploration::{DialogStateMachine, byte_to_char_pos, char_to_line_col};
+    use dialog_state_machine_exploration::DialogStateMachine;
     
     let dialog_machine = DialogStateMachine::new()?;
     let dialog_sentences = dialog_machine.detect_sentences(text)?;

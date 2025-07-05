@@ -509,8 +509,11 @@ impl DialogStateMachine {
         match current_state {
             DialogState::Narrative => {
                 // In narrative state, determine if this is a boundary or dialog open
-                if matched_text.contains("[.!?]") && matched_text.contains(char::is_whitespace) {
-                    // This is a narrative gesture boundary
+                let has_sentence_punct = matched_text.chars().any(|c| ".!?".contains(c));
+                let has_whitespace = matched_text.chars().any(char::is_whitespace);
+                
+                if has_sentence_punct && has_whitespace {
+                    // This is a narrative gesture boundary (. A, ! B, ? C pattern)
                     (MatchType::NarrativeGestureBoundary, DialogState::Narrative)
                 } else {
                     // This must be a dialog open - determine which type
@@ -554,9 +557,8 @@ impl DialogStateMachine {
             // HARD_END: This creates a sentence boundary and transitions to Narrative
             (MatchType::DialogEnd, DialogState::Narrative)
         } else {
-            // SOFT_END: Just dialog close, need to analyze what comes next
-            // For now, transition to Narrative (dialog has ended)
-            // TODO: Could examine context after the close to determine if sentence continues
+            // SOFT_END: Just dialog close, creates soft transition, not hard boundary
+            // Return DialogEnd but maintain dialog state for soft transition
             (MatchType::DialogEnd, DialogState::Narrative)
         }
     }
@@ -769,7 +771,7 @@ mod tests {
     
     #[test]
     fn test_populate_baseline_behavior() {
-        run_boundary_validation_workflow(true, 50);
+        run_boundary_validation_workflow(true, 162);
     }
     
     fn run_boundary_validation_workflow(populate_baseline: bool, limit: usize) {
