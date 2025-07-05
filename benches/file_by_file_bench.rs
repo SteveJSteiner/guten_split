@@ -1,6 +1,7 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use rs_sft_sentences::discovery;
-use rs_sft_sentences::sentence_detector::{SentenceDetector, SentenceDetectorDFA, SentenceDetectorDialog};
+use rs_sft_sentences::sentence_detector::{SentenceDetector, SentenceDetectorDFA};
+use rs_sft_sentences::SentenceDetectorDialog;
 use std::path::PathBuf;
 use std::fs::File;
 use memmap2::{MmapOptions, Mmap};

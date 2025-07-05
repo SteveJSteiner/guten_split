@@ -404,7 +404,8 @@ impl DialogStateMachine {
                     }
                     MatchType::DialogEnd => {
                         // Dialog end creates a sentence boundary
-                        let sentence_end_byte = self.find_sent_sep_start(matched_text)
+                        // Use special logic for dialog endings to include closing quotes
+                        let sentence_end_byte = self.find_dialog_sent_end(matched_text)
                             .map(|sep_offset| match_start_byte.advance(sep_offset))
                             .unwrap_or(match_start_byte);
                         
@@ -615,6 +616,28 @@ impl DialogStateMachine {
         }
         
         None
+    }
+    
+    fn find_dialog_sent_end(&self, matched_boundary: &str) -> Option<usize> {
+        // For dialog endings, include the closing quote in the sentence content
+        // Unlike find_sent_sep_start which finds separator start, this finds sentence content end
+        
+        if let Some(hard_sep_pos) = matched_boundary.find("\n\n") {
+            return Some(hard_sep_pos);
+        }
+        
+        // Find the closing quote and include it in the sentence
+        let closing_quotes = ["\"", "'", "\u{201D}", "\u{2019}", ")", "]", "}"];
+        
+        for quote in &closing_quotes {
+            if let Some(quote_pos) = matched_boundary.find(quote) {
+                // Return position after the quote to include it in sentence content
+                return Some(quote_pos + quote.len());
+            }
+        }
+        
+        // Fallback to original logic if no quotes found
+        self.find_sent_sep_start(matched_boundary)
     }
     
     fn find_sent_sep_end(&self, matched_boundary: &str) -> Option<usize> {

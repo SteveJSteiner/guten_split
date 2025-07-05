@@ -134,13 +134,21 @@ async fn should_process_file(source_path: &Path, cache: &ProcessingCache, overwr
 async fn write_auxiliary_file(
     aux_path: &Path,
     sentences: &[sentence_detector::DetectedSentence],
-    detector: &sentence_detector::SentenceDetector,
+    _detector: &sentence_detector::dialog_detector::SentenceDetectorDialog,
 ) -> Result<()> {
     let file = File::create(aux_path).await?;
     let mut writer = BufWriter::new(file);
     
     for sentence in sentences {
-        let formatted_line = detector.format_sentence_output(sentence);
+        // Format manually since dialog detector uses different API
+        let formatted_line = format!("{}\t{}\t({},{},{},{})", 
+            sentence.index, 
+            sentence.normalized_content,
+            sentence.span.start_line,
+            sentence.span.start_col,
+            sentence.span.end_line,
+            sentence.span.end_col
+        );
         writer.write_all(formatted_line.as_bytes()).await?;
         writer.write_all(b"\n").await?;
     }
@@ -255,11 +263,11 @@ async fn main() -> Result<()> {
         let valid_paths: Vec<_> = valid_files.iter().map(|f| &f.path).collect();
         let read_results = file_reader.read_files_batch(&valid_paths).await?;
         
-        // WHY: compile FST once at startup for all files as per F-3 requirement
-        info!("Compiling sentence detection FST at startup");
-        let sentence_detector = sentence_detector::SentenceDetector::with_default_rules()
-            .map_err(|e| anyhow::anyhow!("Failed to compile sentence detection FST: {}", e))?;
-        info!("Successfully compiled sentence detection FST");
+        // WHY: Use dialog detector with quote truncation fix
+        info!("Initializing dialog-aware sentence detector");
+        let sentence_detector = sentence_detector::dialog_detector::SentenceDetectorDialog::new()
+            .map_err(|e| anyhow::anyhow!("Failed to initialize dialog sentence detector: {}", e))?;
+        info!("Successfully initialized dialog sentence detector");
         
         let mut total_lines = 0u64;
         let mut total_bytes = 0u64;
@@ -322,7 +330,14 @@ async fn main() -> Result<()> {
                                 if sentence_count > 0 && sentence_count <= 3 {
                                     info!("Sample sentences from {}:", stats.file_path);
                                     for sentence in sentences.iter().take(2) {
-                                        let formatted = sentence_detector.format_sentence_output(sentence);
+                                        let formatted = format!("{}\t{}\t({},{},{},{})", 
+                                            sentence.index, 
+                                            sentence.normalized_content,
+                                            sentence.span.start_line,
+                                            sentence.span.start_col,
+                                            sentence.span.end_line,
+                                            sentence.span.end_col
+                                        );
                                         info!("  {}", formatted);
                                     }
                                 }
