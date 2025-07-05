@@ -7,10 +7,12 @@ pub mod normalization;
 pub mod fst_detector;
 pub mod dfa_detector;
 pub mod dialog_detector;
+pub mod abbreviations;
 
 // Re-export core types
 pub use normalization::{normalize_sentence, normalize_sentence_into};
-// pub use dialog_detector::SentenceDetectorDialog;  // TODO: Re-export when dialog detector is fully integrated
+pub use dialog_detector::SentenceDetectorDialog;
+pub use abbreviations::AbbreviationChecker;
 
 /// Position in a text file using 1-based indexing as specified in PRD section 2
 #[derive(Debug, Clone, PartialEq, Eq)]

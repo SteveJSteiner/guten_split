@@ -6,7 +6,7 @@ use regex_automata::{meta::Regex, Input};
 use std::collections::HashMap;
 use tracing::{debug, info};
 
-use super::{DetectedSentence, DetectedSentenceBorrowed, DetectedSentenceOwned, Span};
+use super::{DetectedSentence, DetectedSentenceBorrowed, DetectedSentenceOwned, Span, AbbreviationChecker};
 
 // Type-safe position wrappers to prevent byte/char and 0/1-based confusion
 
@@ -209,6 +209,7 @@ pub struct DialogStateMachine {
     patterns: HashMap<DialogState, Regex>,
     quote_starts: Regex,
     paren_starts: Regex,
+    abbreviation_checker: AbbreviationChecker,
 }
 
 impl DialogStateMachine {
@@ -326,6 +327,7 @@ impl DialogStateMachine {
             patterns,
             quote_starts,
             paren_starts,
+            abbreviation_checker: AbbreviationChecker::new(),
         })
     }
     
@@ -370,32 +372,38 @@ impl DialogStateMachine {
                         if sentence_end_byte.0 > sentence_start_byte.0 {
                             let content = text[sentence_start_byte.0..sentence_end_byte.0].trim().to_string();
                             if !content.is_empty() {
-                                // PHASE 1: Use incremental position tracker instead of O(N) conversions
-                                let (start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
-                                    .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
-                                let (end_char, end_line, end_col) = position_tracker.advance_to_byte(sentence_end_byte)
-                                    .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
-                                
-                                sentences.push(DialogDetectedSentence {
-                                    start_pos: start_char,
-                                    end_pos: end_char,
-                                    start_byte: sentence_start_byte,
-                                    end_byte: sentence_end_byte,
-                                    content,
-                                    start_line,
-                                    start_col,
-                                    end_line,
-                                    end_col,
-                                });
+                                // WHY: Check for abbreviation false positives before creating sentence boundary
+                                if self.abbreviation_checker.ends_with_title_abbreviation(&content) {
+                                    // This is a false positive - don't create sentence boundary
+                                    // Continue processing from current position without advancing sentence_start_byte
+                                } else {
+                                    // PHASE 1: Use incremental position tracker instead of O(N) conversions
+                                    let (start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
+                                        .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
+                                    let (end_char, end_line, end_col) = position_tracker.advance_to_byte(sentence_end_byte)
+                                        .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
+                                    
+                                    sentences.push(DialogDetectedSentence {
+                                        start_pos: start_char,
+                                        end_pos: end_char,
+                                        start_byte: sentence_start_byte,
+                                        end_byte: sentence_end_byte,
+                                        content,
+                                        start_line,
+                                        start_col,
+                                        end_line,
+                                        end_col,
+                                    });
+                                    
+                                    // Next sentence starts after the separator
+                                    let next_sentence_start_byte = self.find_sent_sep_end(matched_text)
+                                        .map(|sep_end_offset| match_start_byte.advance(sep_end_offset))
+                                        .unwrap_or(match_end_byte);
+                                    
+                                    sentence_start_byte = next_sentence_start_byte;
+                                }
                             }
                         }
-                        
-                        // Next sentence starts after the separator
-                        let next_sentence_start_byte = self.find_sent_sep_end(matched_text)
-                            .map(|sep_end_offset| match_start_byte.advance(sep_end_offset))
-                            .unwrap_or(match_end_byte);
-                        
-                        sentence_start_byte = next_sentence_start_byte;
                     }
                     MatchType::DialogOpen => {
                         // State transition only - no sentence boundary created
@@ -762,5 +770,72 @@ mod tests {
             assert_eq!(borrowed.raw(), owned.raw());
             assert_eq!(borrowed.span, owned.span);
         }
+    }
+
+    #[test]
+    fn test_abbreviation_handling() {
+        let detector = SentenceDetectorDialog::new().unwrap();
+        
+        // Test case from task: "Dr. Smith" should not be split
+        let text = "Dr. Smith examined the patient. The results were clear.";
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        assert_eq!(sentences.len(), 2);
+        assert!(sentences[0].raw().contains("Dr. Smith examined the patient"));
+        assert!(sentences[1].raw().contains("The results were clear"));
+        assert!(!sentences[0].raw().trim().ends_with("Dr."));
+    }
+
+    #[test]
+    fn test_multiple_title_abbreviations() {
+        let detector = SentenceDetectorDialog::new().unwrap();
+        
+        // Test multiple title abbreviations
+        let text = "Mr. and Mrs. Johnson arrived. They were late.";
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        assert_eq!(sentences.len(), 2);
+        assert!(sentences[0].raw().contains("Mr. and Mrs. Johnson arrived"));
+        assert!(sentences[1].raw().contains("They were late"));
+    }
+
+    #[test]
+    fn test_geographic_abbreviations() {
+        let detector = SentenceDetectorDialog::new().unwrap();
+        
+        // Test geographic abbreviations
+        let text = "The U.S.A. declared independence. It was 1776.";
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        assert_eq!(sentences.len(), 2);
+        assert!(sentences[0].raw().contains("The U.S.A. declared independence"));
+        assert!(sentences[1].raw().contains("It was 1776"));
+    }
+
+    #[test]
+    fn test_measurement_abbreviations() {
+        let detector = SentenceDetectorDialog::new().unwrap();
+        
+        // Test measurement abbreviations
+        let text = "Distance is 2.5 mi. from here. We can walk it.";
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        assert_eq!(sentences.len(), 2);
+        assert!(sentences[0].raw().contains("Distance is 2.5 mi. from here"));
+        assert!(sentences[1].raw().contains("We can walk it"));
+    }
+
+    #[test]
+    fn test_dialog_with_abbreviations() {
+        let detector = SentenceDetectorDialog::new().unwrap();
+        
+        // Test dialog with abbreviations - this is a more complex case
+        let text = "He said, 'Dr. Smith will see you.' She nodded.";
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        // Should coalesce the dialog and treat "Dr. Smith" as one unit
+        assert_eq!(sentences.len(), 2);
+        assert!(sentences[0].raw().contains("Dr. Smith will see you"));
+        assert!(sentences[1].raw().contains("She nodded"));
     }
 }
