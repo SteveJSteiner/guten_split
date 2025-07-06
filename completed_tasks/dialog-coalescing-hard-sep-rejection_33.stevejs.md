@@ -31,12 +31,35 @@
   - exploration/dialog-state-machine-regex-design.md - dialog coalescing design intent
   - src/sentence_detector/dialog_detector.rs - main implementation location
 
+## Implementation Summary:
+
+Successfully implemented internal punctuation hard separator rejection for proper dialog coalescing:
+
+### Core Algorithm:
+- **O(1) Unicode-safe punctuation scanner**: Walks backward from `\n\n` separators (typically 1-3 bytes) using UTF-8 bit patterns
+- **Smart punctuation classification**: 
+  - Internal (coalesce): `:,;-/([{` + opening quotes + em/en dashes + ellipsis
+  - Terminal (separate): `.!?`  
+  - Closing delimiters: Skip `"')}]` to find meaningful punctuation behind them
+- **Context-aware hard separator logic**: Rejects separators after internal punctuation, accepts after terminal punctuation
+
+### Key Implementation:
+- Enhanced `classify_match()` to call `should_reject_hard_separator()` for `\n\n` patterns
+- Added `should_reject_hard_separator()` method with UTF-8 aware backward scanning
+- Fixed end-of-text handling to prevent sentence duplication
+- Returns `DialogSoftEnd` for rejected separators to maintain dialog coalescing
+
+### Results:
+- `"He said:\n\n\"Hello.\""` → 1 sentence (coalesced across `:`)
+- `"Hello.\"\n\n\"World.\""` → 2 sentences (separated after terminal `.`)
+- All 32 unit tests passing + 2 integration tests for hard separator logic
+
 ## Pre-commit checklist:
-- [ ] All deliverables implemented
-- [ ] Tests passing (`cargo test`)
-- [ ] Claims validated (dialog coalescing produces expected sentence count)
-- [ ] Documentation updated if needed
-- [ ] Clippy warnings addressed
+- [x] All deliverables implemented
+- [x] Tests passing (`cargo test`)
+- [x] Claims validated (dialog coalescing produces expected sentence count)
+- [x] Documentation updated if needed
+- [x] Clippy warnings addressed
 
 ## Internal Punctuation Reference:
 

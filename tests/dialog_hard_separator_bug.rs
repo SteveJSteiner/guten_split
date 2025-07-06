@@ -66,16 +66,14 @@ fn test_dialog_hard_separator_minimal_case() {
         println!("{}\\t{}\\t{:?}", i, sentence.normalize(), sentence.span);
     }
     
-    // Should be 3 sentences separated by hard separators
-    assert_eq!(sentences.len(), 3, "Should detect 3 sentences");
+    // Should be 2 sentences: first coalesced due to colon, second separated by hard separator
+    assert_eq!(sentences.len(), 2, "Should detect 2 sentences");
     
     // Check positioning
-    assert_eq!(sentences[0].normalize().trim(), "He said:");
-    assert_eq!(sentences[1].normalize().trim(), "\"Hello.\"");
-    assert_eq!(sentences[2].normalize().trim(), "\"World.\"");
+    assert_eq!(sentences[0].normalize().trim(), "He said: \"Hello.\"");
+    assert_eq!(sentences[1].normalize().trim(), "\"World.\"");
     
     // Verify line positions
     assert_eq!(sentences[0].span.start_line, 1);
-    assert_eq!(sentences[1].span.start_line, 3);
-    assert_eq!(sentences[2].span.start_line, 5);
+    assert_eq!(sentences[1].span.start_line, 5);
 }

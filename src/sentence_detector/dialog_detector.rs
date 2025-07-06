@@ -212,6 +212,83 @@ pub struct DialogStateMachine {
 }
 
 impl DialogStateMachine {
+    
+    /// Check if hard separator should be rejected due to preceding internal punctuation
+    /// O(1) operation - scans backward to find meaningful punctuation (typically 1-5 bytes)
+    fn should_reject_hard_separator(&self, text_bytes: &[u8], separator_start_byte: usize) -> bool {
+        if separator_start_byte == 0 {
+            return false;
+        }
+        
+        // WHY: Walk backward to find meaningful punctuation, skipping whitespace and closing delimiters
+        // Expected to exit early (1-5 iterations) in typical cases
+        let mut pos = separator_start_byte;
+        let scan_limit = separator_start_byte.saturating_sub(20); // Safety guard
+        
+        while pos > scan_limit {
+            pos -= 1;
+            let byte = text_bytes[pos];
+            
+            // Skip whitespace bytes - continue scanning
+            if matches!(byte, b' ' | b'\t' | b'\n' | b'\r') {
+                continue;
+            }
+            
+            // Found non-whitespace - check if it's a UTF-8 continuation byte
+            if (byte & 0xC0) == 0x80 {
+                // This is a continuation byte (10xxxxxx), keep going to find start byte
+                continue;
+            }
+            
+            // This is either ASCII (0xxxxxxx) or multi-byte start (11xxxxxx)
+            if byte < 0x80 {
+                // ASCII character - check what type it is
+                match byte {
+                    // Terminal punctuation - allow hard separator (don't reject)
+                    b'.' | b'?' | b'!' => return false,
+                    
+                    // Closing delimiters - skip and continue looking for meaningful punctuation
+                    b'"' | b'\'' | b')' | b']' | b'}' => continue,
+                    
+                    // Internal punctuation - reject hard separator (coalesce)
+                    b',' | b';' | b':' | b'-' | b'/' | 
+                    b'(' | b'[' | b'{' => return true,
+                    
+                    // Other characters (letters, digits, etc.) - treat as continuation, reject separator
+                    _ => return true,
+                }
+            } else {
+                // Multi-byte UTF-8 character - decode from start byte
+                let remaining_bytes = &text_bytes[pos..separator_start_byte.min(pos + 4)];
+                if let Ok(utf8_str) = std::str::from_utf8(remaining_bytes) {
+                    if let Some(ch) = utf8_str.chars().next() {
+                        match ch {
+                            // Terminal punctuation - allow hard separator
+                            '.' | '?' | '!' => return false,
+                            
+                            // Smart closing quotes - skip and continue looking
+                            '\u{201D}' | '\u{2019}' => continue,
+                            
+                            // Internal punctuation (em/en dash, smart opening quotes) - reject separator
+                            '\u{2014}' | '\u{2013}' | '\u{201C}' | '\u{2018}' => return true,
+                            
+                            // Ellipsis - treat as continuation, reject separator
+                            '\u{2026}' => return true,
+                            
+                            // Other Unicode - treat as continuation, reject separator
+                            _ => return true,
+                        }
+                    }
+                }
+                // If decode fails, conservatively reject (coalesce)
+                return true;
+            }
+        }
+        
+        // No meaningful punctuation found in scan window - treat as continuation, reject separator
+        true
+    }
+
     pub fn new() -> Result<Self> {
         let mut patterns = HashMap::new();
         
@@ -331,6 +408,7 @@ impl DialogStateMachine {
         let mut current_state = DialogState::Narrative;
         let mut sentence_start_byte = BytePos::new(0);
         let mut position_byte = BytePos::new(0);
+        let mut remaining_text_handled = false;
         
         // PHASE 1: Use incremental position tracker instead of O(N) position conversions
         let mut position_tracker = PositionTracker::new(text);
@@ -353,7 +431,7 @@ impl DialogStateMachine {
                 // Determine what type of match this is and next state
                 let matched_text = &text[match_start_byte.0..match_end_byte.0];
                 
-                let (match_type, next_state) = self.classify_match(matched_text, &current_state);
+                let (match_type, next_state) = self.classify_match(matched_text, &current_state, text.as_bytes(), match_start_byte.0);
                 
                 match match_type {
                     MatchType::NarrativeGestureBoundary => {
@@ -502,7 +580,33 @@ impl DialogStateMachine {
                         });
                     }
                 }
+                remaining_text_handled = true;
                 break;
+            }
+        }
+        
+        // Handle any remaining text after the loop exits naturally (not via else clause)
+        if !remaining_text_handled && sentence_start_byte.0 < text.len() {
+            let content = text[sentence_start_byte.0..].trim().to_string();
+            if !content.is_empty() {
+                // WHY: Create new position tracker for final sentence since main tracker is at end of text
+                let mut final_position_tracker = PositionTracker::new(text);
+                let (start_char, start_line, start_col) = final_position_tracker.advance_to_byte(sentence_start_byte)
+                    .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
+                let (end_char, end_line, end_col) = final_position_tracker.advance_to_byte(BytePos::new(text.len()))
+                    .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
+                
+                sentences.push(DialogDetectedSentence {
+                    start_pos: start_char,
+                    end_pos: end_char,
+                    start_byte: sentence_start_byte,
+                    end_byte: BytePos::new(text.len()),
+                    content,
+                    start_line,
+                    start_col,
+                    end_line,
+                    end_col,
+                });
             }
         }
         
@@ -510,9 +614,16 @@ impl DialogStateMachine {
         Ok(sentences)
     }
     
-    fn classify_match(&self, matched_text: &str, current_state: &DialogState) -> (MatchType, DialogState) {
+    fn classify_match(&self, matched_text: &str, current_state: &DialogState, text_bytes: &[u8], match_start_byte: usize) -> (MatchType, DialogState) {
         // Check for pure hard separator (exactly \n\n)
         if matched_text == "\n\n" {
+            // WHY: Check if this hard separator should be rejected due to preceding internal punctuation
+            // This implements the core dialog coalescing logic for internal punctuation
+            if self.should_reject_hard_separator(text_bytes, match_start_byte) {
+                // Reject this hard separator - treat as non-boundary, continue current state
+                // Keep the current state to maintain continuity across the rejected separator
+                return (MatchType::DialogSoftEnd, current_state.clone());
+            }
             return (MatchType::HardSeparator, DialogState::Unknown);
         }
         
