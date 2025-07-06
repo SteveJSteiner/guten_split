@@ -72,7 +72,7 @@ fn get_sample_files() -> Vec<PathBuf> {
     })
 }
 
-fn process_files_borrowed_api(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn std::error::Error>> {
+fn process_files_borrowed_mmap(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn std::error::Error>> {
     let detector = SentenceDetectorDialog::new()?;
     let mut results = Vec::new();
     
@@ -98,7 +98,7 @@ fn process_files_borrowed_api(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<
     Ok(results)
 }
 
-fn process_files_owned_api(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn std::error::Error>> {
+fn process_files_owned_read(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn std::error::Error>> {
     let detector = SentenceDetectorDialog::new()?;
     let mut results = Vec::new();
     
@@ -107,58 +107,6 @@ fn process_files_owned_api(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn
         
         let start = Instant::now();
         let sentences = detector.detect_sentences_owned(&content)?;
-        let duration = start.elapsed();
-        
-        let result = FileResult::new(
-            file_path.clone(),
-            content.chars().count(),
-            sentences.len(),
-            duration,
-        );
-        
-        results.push(result);
-    }
-    
-    Ok(results)
-}
-
-fn process_files_dialog_borrowed(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn std::error::Error>> {
-    let detector = SentenceDetectorDialog::new()?;
-    let mut results = Vec::new();
-    
-    for file_path in files {
-        let file_handle = File::open(file_path)?;
-        let mmap = unsafe { MmapOptions::new().map(&file_handle)? };
-        let content = std::str::from_utf8(&mmap)?;
-        
-        let start = Instant::now();
-        let sentences = detector.detect_sentences_borrowed(content)?;
-        let duration = start.elapsed();
-        
-        let result = FileResult::new(
-            file_path.clone(),
-            content.chars().count(),
-            sentences.len(),
-            duration,
-        );
-        
-        results.push(result);
-    }
-    
-    Ok(results)
-}
-
-fn process_files_dfa_borrowed(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn std::error::Error>> {
-    let detector = SentenceDetectorDialog::new()?;
-    let mut results = Vec::new();
-    
-    for file_path in files {
-        let file_handle = File::open(file_path)?;
-        let mmap = unsafe { MmapOptions::new().map(&file_handle)? };
-        let content = std::str::from_utf8(&mmap)?;
-        
-        let start = Instant::now();
-        let sentences = detector.detect_sentences_borrowed(content)?;
         let duration = start.elapsed();
         
         let result = FileResult::new(
@@ -199,97 +147,57 @@ fn bench_file_by_file_processing(c: &mut Criterion) {
     println!("=== File-by-File Benchmark Setup ===");
     println!("Processing {} files individually", files.len());
     
-    // Test all approaches first to validate work equivalence
+    // Test both approaches to validate work equivalence
     println!("Validating work equivalence...");
     
-    println!("Testing FST borrowed API...");
-    let borrowed_results = process_files_borrowed_api(&files).unwrap_or_else(|e| {
+    println!("Testing Dialog borrowed API (mmap)...");
+    let borrowed_results = process_files_borrowed_mmap(&files).unwrap_or_else(|e| {
         eprintln!("Borrowed API failed: {}", e);
         Vec::new()
     });
-    println!("FST borrowed API completed");
+    println!("Dialog borrowed API completed");
     
-    println!("Testing FST owned API...");
-    let owned_results = process_files_owned_api(&files).unwrap_or_else(|e| {
+    println!("Testing Dialog owned API (read)...");
+    let owned_results = process_files_owned_read(&files).unwrap_or_else(|e| {
         eprintln!("Owned API failed: {}", e);
         Vec::new()
     });
-    println!("FST owned API completed");
-    
-    println!("Testing DFA API...");
-    let dfa_results = process_files_dfa_borrowed(&files).unwrap_or_else(|e| {
-        eprintln!("DFA API failed: {}", e);
-        Vec::new()
-    });
-    println!("DFA API completed");
-    
-    println!("Testing Dialog API...");
-    let dialog_results = process_files_dialog_borrowed(&files).unwrap_or_else(|e| {
-        eprintln!("Dialog API failed: {}", e);
-        Vec::new()
-    });
-    println!("Dialog API completed");
+    println!("Dialog owned API completed");
     
     // Calculate and display statistics
     let (borrowed_min, borrowed_max, borrowed_avg, borrowed_total) = calculate_stats(&borrowed_results);
     let (owned_min, owned_max, owned_avg, owned_total) = calculate_stats(&owned_results);
-    let (dialog_min, dialog_max, dialog_avg, dialog_total) = calculate_stats(&dialog_results);
-    let (dfa_min, dfa_max, dfa_avg, dfa_total) = calculate_stats(&dfa_results);
     
     println!("=== Performance Results ===");
-    println!("FST Borrowed API: min={:.0} max={:.0} avg={:.0} chars/sec ({:.0} total chars)", 
+    println!("Dialog Borrowed (mmap): min={:.0} max={:.0} avg={:.0} chars/sec ({:.0} total chars)", 
              borrowed_min, borrowed_max, borrowed_avg, borrowed_total);
-    println!("FST Owned API: min={:.0} max={:.0} avg={:.0} chars/sec ({:.0} total chars)", 
+    println!("Dialog Owned (read): min={:.0} max={:.0} avg={:.0} chars/sec ({:.0} total chars)", 
              owned_min, owned_max, owned_avg, owned_total);
-    println!("Dialog Borrowed API: min={:.0} max={:.0} avg={:.0} chars/sec ({:.0} total chars)", 
-             dialog_min, dialog_max, dialog_avg, dialog_total);
-    println!("DFA Borrowed API: min={:.0} max={:.0} avg={:.0} chars/sec ({:.0} total chars)", 
-             dfa_min, dfa_max, dfa_avg, dfa_total);
     
     // Check sentence count consistency
     let borrowed_sentences: usize = borrowed_results.iter().map(|r| r.sentences).sum();
     let owned_sentences: usize = owned_results.iter().map(|r| r.sentences).sum();
-    let dialog_sentences: usize = dialog_results.iter().map(|r| r.sentences).sum();
-    let dfa_sentences: usize = dfa_results.iter().map(|r| r.sentences).sum();
     
     println!("=== Sentence Count Validation ===");
-    println!("FST Borrowed: {} sentences", borrowed_sentences);
-    println!("FST Owned: {} sentences", owned_sentences);
-    println!("Dialog: {} sentences", dialog_sentences);
-    println!("DFA: {} sentences", dfa_sentences);
+    println!("Dialog Borrowed: {} sentences", borrowed_sentences);
+    println!("Dialog Owned: {} sentences", owned_sentences);
     
     let total_chars = borrowed_total as u64;
     let mut group = c.benchmark_group("file_by_file_processing");
     group.throughput(Throughput::Elements(total_chars));
     
     // Benchmark borrowed API (mmap-based)
-    group.bench_function("fst_borrowed_per_file", |b| {
+    group.bench_function("dialog_borrowed_mmap", |b| {
         b.iter(|| {
-            let results = process_files_borrowed_api(black_box(&files)).unwrap();
+            let results = process_files_borrowed_mmap(black_box(&files)).unwrap();
             black_box(results);
         })
     });
     
     // Benchmark owned API (read-based)
-    group.bench_function("fst_owned_per_file", |b| {
+    group.bench_function("dialog_owned_read", |b| {
         b.iter(|| {
-            let results = process_files_owned_api(black_box(&files)).unwrap();
-            black_box(results);
-        })
-    });
-    
-    // Benchmark dialog detector (primary algorithm)
-    group.bench_function("dialog_borrowed_per_file", |b| {
-        b.iter(|| {
-            let results = process_files_dialog_borrowed(black_box(&files)).unwrap();
-            black_box(results);
-        })
-    });
-    
-    // Benchmark DFA detector
-    group.bench_function("dfa_borrowed_per_file", |b| {
-        b.iter(|| {
-            let results = process_files_dfa_borrowed(black_box(&files)).unwrap();
+            let results = process_files_owned_read(black_box(&files)).unwrap();
             black_box(results);
         })
     });
