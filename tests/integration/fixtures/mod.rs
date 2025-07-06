@@ -6,9 +6,9 @@ pub const SIMPLE_TEXT: &str = "Hello world. This is a test. How are you?";
 
 /// Expected sentence output for SIMPLE_TEXT
 /// Format: index<TAB>sentence<TAB>(start_line,start_col,end_line,end_col)
-pub const SIMPLE_EXPECTED: &str = r#"0	Hello world.	(1,1,1,12)
-1	This is a test.	(1,13,1,28)
-2	How are you?	(1,29,1,42)"#;
+pub const SIMPLE_EXPECTED: &str = r#"0	Hello world.	(1,1,1,13)
+1	This is a test.	(1,14,1,29)
+2	How are you?	(1,30,1,42)"#;
 
 /// Multi-line text with line breaks, quotes, and Unicode
 #[allow(dead_code)]
@@ -44,15 +44,13 @@ She asked, "How are you?" Then he replied: "I'm fine, thanks."
 This costs £10.50 in the U.K. However, it's $15.25 in the U.S."#;
 
 /// Expected output for punctuation with SIMPLE rules (current implementation)
-/// WHY: Simple rules don't handle abbreviations - this is a known limitation, not the end goal
-pub const PUNCTUATION_SIMPLE_EXPECTED: &str = r#"0	Dr.	(1,1,1,3)
-1	Smith went to the U.S.A. yesterday.	(1,4,1,39)
-2	He said "Hello there!" to Mr.	(1,40,1,69)
-3	Jones.	(1,70,1,76)
-4	She asked, "How are you?	(1,77,3,24)
-5	" Then he replied: "I'm fine, thanks.	(3,25,3,61)
-6	" This costs £10.50 in the U.K.	(3,62,5,29)
-7	However, it's $15.25 in the U.S.	(5,30,5,63)"#;
+/// WHY: With closing delimiter fix, abbreviations are now properly handled
+pub const PUNCTUATION_SIMPLE_EXPECTED: &str = r#"0	Dr. Smith went to the U.S.A. yesterday.	(1,1,1,40)
+1	He said "Hello there!" to Mr. Jones.	(1,41,1,77)
+2	She asked, "How are you?"	(3,1,3,26)
+3	Then he replied: "I'm fine, thanks."	(3,27,3,63)
+4	This costs £10.50 in the U.K.	(5,1,5,30)
+5	However, it's $15.25 in the U.S.	(5,31,5,63)"#;
 
 /// Expected output for punctuation with COMPLETE rules (end goal)
 /// WHY: Complete rules should properly handle abbreviations and not split incorrectly

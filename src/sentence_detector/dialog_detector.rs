@@ -247,8 +247,8 @@ impl DialogStateMachine {
                     // Terminal punctuation - allow hard separator (don't reject)
                     b'.' | b'?' | b'!' => return false,
                     
-                    // Closing delimiters - skip and continue looking for meaningful punctuation
-                    b'"' | b'\'' | b')' | b']' | b'}' => continue,
+                    // Closing delimiters - accept hard separator (they are terminal)
+                    b'"' | b'\'' | b')' | b']' | b'}' => return false,
                     
                     // Internal punctuation - reject hard separator (coalesce)
                     b',' | b';' | b':' | b'-' | b'/' | 
@@ -266,8 +266,8 @@ impl DialogStateMachine {
                             // Terminal punctuation - allow hard separator
                             '.' | '?' | '!' => return false,
                             
-                            // Smart closing quotes - skip and continue looking
-                            '\u{201D}' | '\u{2019}' => continue,
+                            // Smart closing quotes - accept hard separator (they are terminal)
+                            '\u{201D}' | '\u{2019}' => return false,
                             
                             // Internal punctuation (em/en dash, smart opening quotes) - reject separator
                             '\u{2014}' | '\u{2013}' | '\u{201C}' | '\u{2018}' => return true,
@@ -1006,5 +1006,29 @@ mod tests {
         assert_eq!(sentences.len(), 2, "Hard transition should create sentence boundary");
         assert!(sentences[0].raw().contains("Wait!") && sentences[0].raw().contains("he shouted"));
         assert!(sentences[1].raw().contains("Then he left"));
+    }
+
+    #[test]
+    fn test_colon_paragraph_break_dialog_separation() {
+        let detector = SentenceDetectorDialog::new().unwrap();
+        
+        // Test case from task: colon + paragraph break + dialog should create sentence boundary
+        let text = r#"She looked perplexed for a moment, and then said, not fiercely, but still loud enough for the furniture to hear:
+
+"Well, I lay if I get hold of you I'll—"
+
+She did not finish, for by this time she was bending down and punching under the bed with the broom, and so she needed breath to punctuate the punches with."#;
+        
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        // Should be 2 sentences - colon followed by paragraph break should not over-coalesce
+        assert_eq!(sentences.len(), 2, "Colon + paragraph break + dialog should create sentence boundary");
+        
+        // First sentence should include the dialog
+        assert!(sentences[0].raw().contains("furniture to hear:"));
+        assert!(sentences[0].raw().contains("Well, I lay if I get hold of you I'll—"));
+        
+        // Second sentence should be the narrative continuation
+        assert!(sentences[1].raw().contains("She did not finish"));
     }
 }
