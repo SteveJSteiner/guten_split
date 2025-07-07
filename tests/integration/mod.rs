@@ -43,7 +43,7 @@ impl TestFixture {
         let file_stem = aux_path.file_stem()
             .and_then(|s| s.to_str())
             .unwrap_or("unknown");
-        aux_path.set_file_name(format!("{file_stem}_rs_sft_sentences.txt"));
+        aux_path.set_file_name(format!("{file_stem}_seams.txt"));
         aux_path
     }
     
@@ -83,7 +83,7 @@ impl TestFixture {
     
     /// Generate cache file path for the test fixture root
     pub fn cache_path(&self) -> PathBuf {
-        self.root_path.join(".rs_sft_sentences_cache.json")
+        self.root_path.join(".seams_cache.json")
     }
     
     /// Check if cache file exists

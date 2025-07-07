@@ -1,6 +1,6 @@
 # Integration Test Patterns
 
-This document outlines the patterns and conventions used in the integration test suite for rs-sft-sentences.
+This document outlines the patterns and conventions used in the integration test suite for seams.
 
 ## Test Structure
 

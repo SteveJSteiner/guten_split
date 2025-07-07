@@ -3,7 +3,7 @@
 // Creates .norm_sents and .norm_sm_sents files next to each original file for comparison
 
 use anyhow::Result;
-use rs_sft_sentences::discovery::{collect_discovered_files, DiscoveryConfig};
+use seams::discovery::{collect_discovered_files, DiscoveryConfig};
 use std::path::PathBuf;
 use tokio::fs;
 use regex_automata::meta::Regex;

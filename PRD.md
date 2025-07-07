@@ -9,7 +9,7 @@ Provide a high-throughput CLI tool that scans a local mirror of Project Gutenber
 Term	Definition
 DFA	Deterministic Finite Automaton compiled at startup from sentence-boundary patterns.
 Sentence normalisation	Removal of intra-sentence hard line breaks (\n, \r\n) with whitespace collapsed to a single space. Everything else remains byte-exact.
-Aux file	<orig>_rs_sft_sentences.txt written next to its source.
+Aux file	<orig>_seams.txt written next to its source.
 Span	(start_line, start_col, end_line, end_col)—all one-based, columns measured in Unicode scalar values (characters).
 
 3 Scope
@@ -37,7 +37,7 @@ F-3	At startup, compile sentence-boundary patterns into a high-performance DFA s
 F-4	Read each file with async buffered reader (Tokio) or memory-map (when --use_mmap).
 F-5	Detect sentence boundaries with the DFA, producing: index<TAB>sentence<TAB>(start_line,start_col,end_line,end_col) per line.
 F-6	Normalise sentences by removing hard line breaks; treat \r\n as single break; preserve all other bytes.
-F-7	Write results via async buffered writer to <path>_rs_sft_sentences.txt.
+F-7	Write results via async buffered writer to <path>_seams.txt.
 F-8	Generate per-file stats (chars processed, sentences, wall-clock ms) and aggregate into run_stats.json with total chars/sec.
 F-9	Skip processing when aux file exists and completes without truncation; detect partial files by trailing newline + EOF.
 F-10	Respect --fail_fast: abort entire run on first I/O/UTF-8/DFA error.
@@ -59,7 +59,7 @@ Observability	Structured logs (JSONLines), console progress bars (on by default)
 
 7 CLI & Config
 
-rs-sft-sentences <root_dir>
+seams <root_dir>
     [--overwrite_all]   # overwrite even complete aux files
     [--fail_fast]       # abort on first error
     [--use_mmap]        # use memory-mapped I/O instead of async buffered

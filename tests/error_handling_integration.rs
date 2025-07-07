@@ -1,6 +1,6 @@
 // use std::path::PathBuf;
 use tokio;
-use rs_sft_sentences::{discovery, reader, sentence_detector};
+use seams::{discovery, reader, sentence_detector};
 
 #[path = "integration/mod.rs"]
 mod test_utils;

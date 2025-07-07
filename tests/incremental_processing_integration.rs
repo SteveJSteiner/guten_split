@@ -17,7 +17,7 @@ async fn test_skip_complete_aux_files() {
     
     // First run - should process the file
     let output1 = Command::new("cargo")
-        .args(&["run", "--bin", "rs-sft-sentences", "--", fixture.root_path.to_str().unwrap()])
+        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run first command");
     
@@ -32,7 +32,7 @@ async fn test_skip_complete_aux_files() {
     
     // Second run - should skip the file
     let output2 = Command::new("cargo")
-        .args(&["run", "--bin", "rs-sft-sentences", "--", fixture.root_path.to_str().unwrap()])
+        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run second command");
     
@@ -68,10 +68,15 @@ async fn test_process_aux_files_missing_from_cache() {
     assert!(!fixture.cache_exists(), "Cache file should not exist initially");
     
     // Run processing - should process file since it's not in cache
-    let output = Command::new("cargo")
-        .args(&["run", "--bin", "rs-sft-sentences", "--", fixture.root_path.to_str().unwrap()])
-        .output()
-        .expect("Failed to run command");
+    let output = tokio::time::timeout(
+        std::time::Duration::from_secs(30),
+        tokio::process::Command::new("cargo")
+            .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
+            .output()
+    )
+    .await
+    .expect("Command timed out after 30 seconds")
+    .expect("Failed to run command");
     
     assert!(output.status.success(), "Run failed: {}", String::from_utf8_lossy(&output.stderr));
     
@@ -100,7 +105,7 @@ async fn test_overwrite_all_flag() {
     
     // First run - should process the file
     let output1 = Command::new("cargo")
-        .args(&["run", "--bin", "rs-sft-sentences", "--", fixture.root_path.to_str().unwrap()])
+        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run first command");
     
@@ -111,7 +116,7 @@ async fn test_overwrite_all_flag() {
     
     // Second run with --overwrite-all - should process the file again
     let output2 = Command::new("cargo")
-        .args(&["run", "--bin", "rs-sft-sentences", "--", "--overwrite-all", fixture.root_path.to_str().unwrap()])
+        .args(&["run", "--bin", "seams", "--", "--overwrite-all", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run second command");
     
@@ -135,7 +140,7 @@ async fn test_deleted_aux_files_regenerated() {
     
     // First run to create aux file and cache
     let output1 = Command::new("cargo")
-        .args(&["run", "--bin", "rs-sft-sentences", "--", fixture.root_path.to_str().unwrap()])
+        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run first command");
     
@@ -150,7 +155,7 @@ async fn test_deleted_aux_files_regenerated() {
     
     // Second run - should detect missing aux file and regenerate it
     let output2 = Command::new("cargo")
-        .args(&["run", "--bin", "rs-sft-sentences", "--", fixture.root_path.to_str().unwrap()])
+        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run second command");
     
@@ -183,7 +188,7 @@ async fn test_mixed_incremental_states() {
     
     // First run - process all files to create cache
     let output1 = Command::new("cargo")
-        .args(&["run", "--bin", "rs-sft-sentences", "--", fixture.root_path.to_str().unwrap()])
+        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run first command");
     
@@ -213,7 +218,7 @@ async fn test_mixed_incremental_states() {
     
     // Second run - should skip file1, process file2 (newer), and regenerate file3 (missing aux)
     let output2 = Command::new("cargo")
-        .args(&["run", "--bin", "rs-sft-sentences", "--", fixture.root_path.to_str().unwrap()])
+        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run second command");
     

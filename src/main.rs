@@ -19,7 +19,7 @@ fn generate_aux_file_path(source_path: &Path) -> PathBuf {
     let file_stem = aux_path.file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
-    aux_path.set_file_name(format!("{file_stem}_rs_sft_sentences.txt"));
+    aux_path.set_file_name(format!("{file_stem}_seams.txt"));
     aux_path
 }
 
@@ -104,7 +104,7 @@ impl ProcessingCache {
 /// Generate cache file path for given root directory
 /// WHY: Consistent cache location that's easy to find and delete
 fn generate_cache_path(root_dir: &Path) -> PathBuf {
-    root_dir.join(".rs_sft_sentences_cache.json")
+    root_dir.join(".seams_cache.json")
 }
 
 /// Determine if file should be processed based on cache and incremental rules
@@ -158,7 +158,7 @@ async fn write_auxiliary_file(
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "rs-sft-sentences")]
+#[command(name = "seams")]
 #[command(about = "High-throughput sentence extractor for Project Gutenberg texts")]
 #[command(version)]
 struct Args {
@@ -196,7 +196,7 @@ async fn main() -> Result<()> {
     
     let args = Args::parse();
     
-    info!("Starting rs-sft-sentences");
+    info!("Starting seams");
     info!(?args, "Parsed CLI arguments");
     
     // WHY: validate root directory exists early to fail fast with clear error
@@ -240,7 +240,7 @@ async fn main() -> Result<()> {
         }
     }
     
-    println!("rs-sft-sentences v{} - File discovery complete", env!("CARGO_PKG_VERSION"));
+    println!("seams v{} - File discovery complete", env!("CARGO_PKG_VERSION"));
     println!("Found {} files matching pattern *-0.txt", discovered_files.len());
     println!("Valid files: {}, Files with issues: {}", valid_files.len(), invalid_files.len());
     

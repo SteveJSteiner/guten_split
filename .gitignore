@@ -14,7 +14,7 @@ Thumbs.db
 
 # Tool outputs
 run_stats.json
-*_rs_sft_sentences.txt
+*_seams.txt
 
 # Temporary files
 *.tmp

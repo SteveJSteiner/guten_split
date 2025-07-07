@@ -1,4 +1,4 @@
-use rs_sft_sentences::{discovery, reader, sentence_detector};
+use seams::{discovery, reader, sentence_detector};
 
 #[path = "integration/fixtures/mod.rs"]
 mod fixtures;

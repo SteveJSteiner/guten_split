@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use rs_sft_sentences::{discovery, reader};
+use seams::{discovery, reader};
 use std::path::PathBuf;
 use std::time::Instant;
 

@@ -1,4 +1,4 @@
-use rs_sft_sentences::SentenceDetectorDialog;
+use seams::SentenceDetectorDialog;
 
 #[test]
 fn test_dialog_hard_separator_bug_reproduction() {
