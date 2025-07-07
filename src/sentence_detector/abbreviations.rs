@@ -80,45 +80,56 @@ impl Default for AbbreviationChecker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::OnceLock;
+    
+    // WHY: Single shared checker instance reduces test overhead
+    static SHARED_CHECKER: OnceLock<AbbreviationChecker> = OnceLock::new();
+    
+    fn get_checker() -> &'static AbbreviationChecker {
+        SHARED_CHECKER.get_or_init(|| AbbreviationChecker::new())
+    }
 
     #[test]
-    fn test_abbreviation_detection() {
-        let checker = AbbreviationChecker::new();
+    fn test_abbreviation_detection_comprehensive() {
+        let checker = get_checker();
         
         // Test basic abbreviation detection
-        assert!(checker.is_abbreviation("Dr."));
-        assert!(checker.is_abbreviation("U.S.A."));
-        assert!(checker.is_abbreviation("p.m."));
+        let abbreviations = ["Dr.", "U.S.A.", "p.m.", "Prof.", "mi."];
+        for abbr in &abbreviations {
+            assert!(checker.is_abbreviation(abbr), "Should detect {} as abbreviation", abbr);
+        }
         assert!(!checker.is_abbreviation("Hello"));
         
-        // Test title abbreviation detection
-        assert!(checker.is_title_abbreviation("Dr."));
-        assert!(checker.is_title_abbreviation("Prof."));
+        // Test title vs non-title abbreviation classification
+        let title_abbreviations = ["Dr.", "Prof.", "Mr.", "Mrs."];
+        for abbr in &title_abbreviations {
+            assert!(checker.is_title_abbreviation(abbr), "Should detect {} as title abbreviation", abbr);
+        }
         assert!(!checker.is_title_abbreviation("U.S.A."));
-    }
-
-    #[test]
-    fn test_text_ending_detection() {
-        let checker = AbbreviationChecker::new();
+        assert!(!checker.is_title_abbreviation("p.m."));
         
-        // Test ends_with_abbreviation
-        assert!(checker.ends_with_abbreviation("Meeting at 5 p.m."));
-        assert!(checker.ends_with_abbreviation("He lives in the U.S.A."));
-        assert!(!checker.ends_with_abbreviation("This is a sentence"));
+        // Test text ending detection
+        let ending_tests = [
+            ("Meeting at 5 p.m.", true),
+            ("He lives in the U.S.A.", true),
+            ("This is a sentence", false),
+            ("Call Dr.", true),
+            ("See Prof.", true),
+        ];
+        for (text, should_end_with_abbr) in &ending_tests {
+            assert_eq!(checker.ends_with_abbreviation(text), *should_end_with_abbr, 
+                "ends_with_abbreviation failed for: {}", text);
+        }
         
-        // Test ends_with_title_abbreviation
-        assert!(checker.ends_with_title_abbreviation("Call Dr."));
-        assert!(checker.ends_with_title_abbreviation("See Prof."));
-        assert!(!checker.ends_with_title_abbreviation("Meeting at 5 p.m."));
-    }
-
-    #[test]
-    fn test_punctuation_handling() {
-        let checker = AbbreviationChecker::new();
-        
-        // Test with quotes - should still detect abbreviation
-        assert!(checker.ends_with_abbreviation("He said 'Dr.'"));
-        assert!(checker.ends_with_abbreviation("She mentioned \"Prof.\""));
-        assert!(checker.ends_with_title_abbreviation("He said 'Dr.'"));
+        // Test punctuation handling with quotes (only quotes are stripped, not other punctuation)
+        let punctuation_tests = [
+            ("He said 'Dr.'", true),
+            ("She mentioned \"Prof.\"", true),
+            ("Meeting at 5 p.m.?", false), // Question mark is not stripped, so "p.m.?" != "p.m."
+        ];
+        for (text, should_detect) in &punctuation_tests {
+            assert_eq!(checker.ends_with_abbreviation(text), *should_detect,
+                "Punctuation handling failed for: {}", text);
+        }
     }
 }

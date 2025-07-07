@@ -91,8 +91,83 @@ DFA patterns change frequently	M	M	Hot-reload DFA per file batch when patterns c
 Very large files cause memory spikes	L	M	Stream processing and bounded buffers.
 Windows newline variants mishandled	M	L	Normalisation unit tests on mixed CRLF data.
 
-11 Open Questions
+11 Python Module Requirements
+
+The seams functionality shall be available as a Python module to enable programmatic usage:
+
+Category	Requirement
+Package	Separate PyPI package (knowseams or variant) with native extensions via PyO3/maturin
+API Style	Class-based primary API (SentenceDetector, FileDiscovery) with functional convenience wrappers
+Core Features	Full sentence detection with span metadata, file processing, async corpus processing
+Performance	DFA reuse across operations, async I/O pipeline, both buffered and mmap backends
+Distribution	Python wheels for Linux (x86_64/aarch64), Windows, macOS
+Dependencies	Depends on seams crate published to crates.io as pure Rust library
+
+Python API shall expose:
+- Individual text processing: `detector.detect_sentences(text)`
+- File processing: `detector.process_file(path, use_mmap=False)`
+- Async corpus processing: `FileDiscovery.process_corpus(root_dir)`
+- Same DetectedSentence and Span types as Rust API
+- CorpusStats matching run_stats.json format
+
+12 Open Questions
 	1.	Which concrete DSL or regex subset will define the sentence-boundary spec?
 	2.	Should stats include per-sentence length histograms?
 	3.	Need coloured CLI progress bars or silent by default? (Current default = on.)
 	4.	Future: move from DFA to PDA for cross-paragraph context?
+
+13 Open Source Publication Requirements
+
+13.1 Publication Goals
+	•	Technical Showcase: Demonstrate high-performance text processing implementation
+	•	Performance Leadership: Demonstrate >200M characters/sec throughput with benchmarks validated on every checkin
+	•	Cold Start Performance: Showcase superior initialization performance compared to existing solutions
+	•	Learning Documentation: Document Rust implementation journey as adaptation/problem-solving demonstration
+	•	Narrative Processing Optimization: Highlight specialization for narrative sentences requiring spans from original documents
+
+13.2 Repository Structure Requirements
+
+ID	Requirement
+R-1	Top-level README optimized for target audience (see separate task)
+R-2	LICENSE file (MIT license)
+R-3	CONTRIBUTING.md with minimal guidelines: "fork it, ping me"
+R-4	Architecture documentation explaining async approach and sentence detection algorithm design
+R-5	Performance benchmarks validated on every checkin (>30M chars/sec)
+R-6	Example workflows for narrative analysis pipeline integration
+
+13.3 CLI-First User Experience
+
+ID	Requirement
+UX-1	Simple installation via `cargo install seams`
+UX-2	Comprehensive `--help` documentation with examples
+UX-3	Helpful error messages with actionable suggestions
+UX-4	Shell completion support (bash/zsh/fish)
+UX-5	Progress feedback that works well in CI/pipeline contexts
+	(see docs/cli-ux-specification.md for detailed requirements)
+
+13.4 Release Strategy
+
+ID	Requirement
+REL-1	Semantic versioning (SemVer) for breaking changes
+REL-2	v0.1 release: feature complete but rough edges acceptable
+REL-3	Cross-platform binaries for macOS, Windows, Linux (x86_64/aarch64)
+REL-4	Crate publication to crates.io
+REL-5	Release notes documenting performance characteristics and breaking changes
+
+13.5 Documentation Requirements
+
+ID	Requirement
+DOC-1	Performance benchmarks with every-checkin validation
+DOC-2	Cold start performance measurements and explanation
+DOC-3	Architecture decisions documentation (async design, DFA choice)
+DOC-4	AI collaboration development process (see docs/ai-collaboration.md)
+DOC-5	Benchmark methodology documentation (see docs/benchmark-methodology.md)
+DOC-6	Integration examples for narrative analysis workflows
+
+13.6 Quality Assurance
+
+ID	Requirement
+QA-1	Local testing covers all functionality (no GitHub CI required)
+QA-2	Cross-platform testing on author's available hardware
+QA-3	Performance regression detection through local benchmarks (every checkin)
+QA-4	Documentation accuracy verification

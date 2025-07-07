@@ -9,9 +9,7 @@ use tokio::fs;
 use regex_automata::meta::Regex;
 
 // Import dialog state machine module for comparison
-mod dialog_state_machine_exploration {
-    include!("../../tests/dialog_state_machine_exploration.rs");
-}
+use seams::sentence_detector::dialog_detector::*;
 
 // Enhanced Dictionary Strategy - Copy from tests for sentence generation
 fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<String>> {
@@ -107,18 +105,16 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<String>> {
 
 // Dialog State Machine Strategy - Uses the optimized Phase 1 implementation
 fn detect_sentences_dialog_state_machine(text: &str) -> Result<Vec<String>> {
-    use dialog_state_machine_exploration::DialogStateMachine;
+    let detector = SentenceDetectorDialog::new()
+        .map_err(|e| anyhow::anyhow!("Failed to create sentence detector: {}", e))?;
     
-    let dialog_machine = DialogStateMachine::new()
-        .map_err(|e| anyhow::anyhow!("Failed to create dialog state machine: {}", e))?;
-    
-    let sentences = dialog_machine.detect_sentences(text)
+    let sentences = detector.detect_sentences(text)
         .map_err(|e| anyhow::anyhow!("Failed to detect sentences: {}", e))?;
     
     // Convert DetectedSentence to strings
     let sentence_strings: Vec<String> = sentences
         .into_iter()
-        .map(|s| s.content)
+        .map(|s| s.normalized_content)
         .collect();
     
     Ok(sentence_strings)

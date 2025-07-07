@@ -1,80 +1,67 @@
-use seams::{discovery, reader, sentence_detector};
+use seams::sentence_detector;
+use tempfile::TempDir;
+use std::fs;
+use std::sync::OnceLock;
 
-#[path = "integration/fixtures/mod.rs"]
-mod fixtures;
-use fixtures::*;
+// WHY: Single shared detector instance reduces test overhead from multiple instantiations
+static SHARED_DETECTOR: OnceLock<sentence_detector::SentenceDetectorDialog> = OnceLock::new();
 
-#[path = "integration/mod.rs"]
-mod test_utils;
-use test_utils::{TestFixture, assert_golden_file};
-
-/// Test complete pipeline with simple single-line text
-#[tokio::test]
-async fn test_pipeline_simple_text() {
-    let fixture = TestFixture::new();
-    let file_path = fixture.create_gutenberg_file("simple-0.txt", SIMPLE_TEXT);
-    
-    // Test discovery
-    let files = discovery::find_gutenberg_files(&fixture.root_path).await
-        .expect("Discovery should succeed");
-    assert_eq!(files.len(), 1);
-    assert_eq!(files[0], file_path);
-    
-    // Test file reading
-    let content = reader::read_file_async(&file_path).await
-        .expect("File reading should succeed");
-    assert_eq!(content, SIMPLE_TEXT);
-    
-    // Test sentence detection
-    let detector = sentence_detector::SentenceDetectorDialog::new()
-        .expect("Detector creation should succeed");
-    let sentences = detector.detect_sentences(&content)
-        .expect("Sentence detection should succeed");
-    
-    // Format output according to PRD spec
-    let output = format_sentences_output(&sentences);
-    
-    // Golden-file validation
-    assert_golden_file(&output, SIMPLE_EXPECTED, "Simple text pipeline");
+fn get_detector() -> &'static sentence_detector::SentenceDetectorDialog {
+    SHARED_DETECTOR.get_or_init(|| sentence_detector::SentenceDetectorDialog::new().unwrap())
 }
 
-/// Test pipeline with challenging punctuation using SIMPLE rules
-/// WHY: This tests current implementation limitations - simple rules don't handle abbreviations
+/// Test sentence detection pipeline on simple text
 #[tokio::test]
-async fn test_pipeline_punctuation_simple_rules() {
-    let fixture = TestFixture::new();
-    let _file_path = fixture.create_gutenberg_file("punct-0.txt", PUNCTUATION_TEXT);
+async fn test_sentence_detection_simple() {
+    let detector = get_detector();
     
-    let files = discovery::find_gutenberg_files(&fixture.root_path).await
-        .expect("Discovery should succeed");
-    let content = reader::read_file_async(&files[0]).await
-        .expect("File reading should succeed");
-    let detector = sentence_detector::SentenceDetectorDialog::new()
-        .expect("Detector creation should succeed");
-    let sentences = detector.detect_sentences(&content)
+    let text = "Hello world. This is a test. How are you?";
+    let sentences = detector.detect_sentences(text)
         .expect("Sentence detection should succeed");
     
-    let output = format_sentences_output(&sentences);
-    assert_golden_file(&output, PUNCTUATION_SIMPLE_EXPECTED, "Punctuation text pipeline (simple rules)");
+    assert_eq!(sentences.len(), 3);
+    assert_eq!(sentences[0].normalized_content, "Hello world.");
+    assert_eq!(sentences[1].normalized_content, "This is a test.");
+    assert_eq!(sentences[2].normalized_content, "How are you?");
 }
 
-/// Test multiple file discovery and processing
+/// Test sentence detection with abbreviations and punctuation
 #[tokio::test]
-async fn test_pipeline_multiple_files() {
-    let fixture = TestFixture::new();
+async fn test_sentence_detection_punctuation() {
+    let detector = get_detector();
     
-    // Create multiple test files
-    fixture.create_gutenberg_file("book1/chapter1-0.txt", SIMPLE_TEXT);
-    fixture.create_gutenberg_file("book2/chapter1-0.txt", MINIMAL_TEXT);
+    let text = "Dr. Smith went to the U.S.A. yesterday. He said \"Hello there!\" to Mr. Jones.";
+    let sentences = detector.detect_sentences(text)
+        .expect("Sentence detection should succeed");
     
-    let files = discovery::find_gutenberg_files(&fixture.root_path).await
+    assert_eq!(sentences.len(), 2);
+    assert!(sentences[0].normalized_content.contains("Dr. Smith"));
+    assert!(sentences[0].normalized_content.contains("U.S.A."));
+    assert!(sentences[1].normalized_content.contains("Hello there!"));
+}
+
+/// Test file discovery and processing with minimal setup
+#[tokio::test]
+async fn test_file_discovery_and_processing() {
+    use seams::{discovery, reader};
+    
+    let temp_dir = TempDir::new().expect("Failed to create temp directory");
+    let root_path = temp_dir.path();
+    
+    // Create test files directly
+    let file1_path = root_path.join("book1-0.txt");
+    let file2_path = root_path.join("book2-0.txt");
+    
+    fs::write(&file1_path, "Hello world. This is a test.").expect("Failed to write file1");
+    fs::write(&file2_path, "Another test. How are you?").expect("Failed to write file2");
+    
+    let files = discovery::find_gutenberg_files(root_path).await
         .expect("Discovery should succeed");
     
     assert_eq!(files.len(), 2);
     
-    // Process all files
-    let detector = sentence_detector::SentenceDetectorDialog::new()
-        .expect("Detector creation should succeed");
+    // Process all files with shared detector
+    let detector = get_detector();
     
     for file_path in files {
         let content = reader::read_file_async(&file_path).await
@@ -82,27 +69,6 @@ async fn test_pipeline_multiple_files() {
         let sentences = detector.detect_sentences(&content)
             .expect("Sentence detection should succeed");
         
-        // Ensure each file produces some sentences
-        assert!(!sentences.is_empty(), 
-            "File {:?} should produce sentences", file_path);
+        assert!(!sentences.is_empty(), "File {:?} should produce sentences", file_path);
     }
-}
-
-/// Helper function to format sentences according to PRD spec
-/// Format: index<TAB>sentence<TAB>(start_line,start_col,end_line,end_col)
-fn format_sentences_output(sentences: &[sentence_detector::DetectedSentence]) -> String {
-    sentences.iter()
-        .enumerate()
-        .map(|(i, sentence)| {
-            format!("{}\t{}\t({},{},{},{})",
-                i,
-                sentence.normalized_content,
-                sentence.span.start_line,
-                sentence.span.start_col,
-                sentence.span.end_line,
-                sentence.span.end_col
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
 }

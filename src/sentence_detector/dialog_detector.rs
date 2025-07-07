@@ -864,10 +864,18 @@ impl SentenceDetectorDialog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::OnceLock;
+    
+    // WHY: Single shared detector instance reduces test overhead from 38+ instantiations
+    static SHARED_DETECTOR: OnceLock<SentenceDetectorDialog> = OnceLock::new();
+    
+    fn get_detector() -> &'static SentenceDetectorDialog {
+        SHARED_DETECTOR.get_or_init(|| SentenceDetectorDialog::new().unwrap())
+    }
 
     #[test]
     fn test_basic_narrative_sentences() {
-        let detector = SentenceDetectorDialog::new().unwrap();
+        let detector = get_detector();
         let text = "This is a sentence. This is another sentence.";
         let sentences = detector.detect_sentences_borrowed(text).unwrap();
         
@@ -878,7 +886,7 @@ mod tests {
 
     #[test]
     fn test_dialog_coalescing() {
-        let detector = SentenceDetectorDialog::new().unwrap();
+        let detector = get_detector();
         let text = "He said, \"Stop her, sir! Ting-a-ling-ling!\" The headway ran almost out.";
         let sentences = detector.detect_sentences_borrowed(text).unwrap();
         
@@ -889,7 +897,7 @@ mod tests {
 
     #[test]
     fn test_dual_api_equivalence() {
-        let detector = SentenceDetectorDialog::new().unwrap();
+        let detector = get_detector();
         let text = "Hello world. This is a test. How are you?";
         
         let borrowed_result = detector.detect_sentences_borrowed(text).unwrap();
@@ -906,74 +914,42 @@ mod tests {
 
     #[test]
     fn test_abbreviation_handling() {
-        let detector = SentenceDetectorDialog::new().unwrap();
+        let detector = get_detector();
         
-        // Test case from task: "Dr. Smith" should not be split
+        // Test comprehensive abbreviation handling in various contexts
+        let test_cases = [
+            // Basic title abbreviation - should not be split
+            ("Dr. Smith examined the patient. The results were clear.", 2, ["Dr. Smith examined the patient", "The results were clear"]),
+            // Multiple title abbreviations
+            ("Mr. and Mrs. Johnson arrived. They were late.", 2, ["Mr. and Mrs. Johnson arrived", "They were late"]),
+            // Geographic abbreviations
+            ("The U.S.A. declared independence. It was 1776.", 2, ["The U.S.A. declared independence", "It was 1776"]),
+            // Measurement abbreviations
+            ("Distance is 2.5 mi. from here. We can walk it.", 2, ["Distance is 2.5 mi. from here", "We can walk it"]),
+            // Dialog with abbreviations
+            ("He said, 'Dr. Smith will see you.' She nodded.", 2, ["Dr. Smith will see you", "She nodded"]),
+        ];
+        
+        for (text, expected_count, expected_content) in test_cases {
+            let sentences = detector.detect_sentences_borrowed(text).unwrap();
+            assert_eq!(sentences.len(), expected_count, "Failed for text: {}", text);
+            
+            for (i, expected) in expected_content.iter().enumerate() {
+                assert!(sentences[i].raw().contains(expected), 
+                    "Sentence {} should contain '{}' but got '{}'", i, expected, sentences[i].raw());
+            }
+        }
+        
+        // Additional validation: ensure "Dr." is not treated as sentence boundary
         let text = "Dr. Smith examined the patient. The results were clear.";
         let sentences = detector.detect_sentences_borrowed(text).unwrap();
-        
-        assert_eq!(sentences.len(), 2);
-        assert!(sentences[0].raw().contains("Dr. Smith examined the patient"));
-        assert!(sentences[1].raw().contains("The results were clear"));
-        assert!(!sentences[0].raw().trim().ends_with("Dr."));
+        assert!(!sentences[0].raw().trim().ends_with("Dr."), "Dr. should not end a sentence when followed by a name");
     }
 
-    #[test]
-    fn test_multiple_title_abbreviations() {
-        let detector = SentenceDetectorDialog::new().unwrap();
-        
-        // Test multiple title abbreviations
-        let text = "Mr. and Mrs. Johnson arrived. They were late.";
-        let sentences = detector.detect_sentences_borrowed(text).unwrap();
-        
-        assert_eq!(sentences.len(), 2);
-        assert!(sentences[0].raw().contains("Mr. and Mrs. Johnson arrived"));
-        assert!(sentences[1].raw().contains("They were late"));
-    }
-
-    #[test]
-    fn test_geographic_abbreviations() {
-        let detector = SentenceDetectorDialog::new().unwrap();
-        
-        // Test geographic abbreviations
-        let text = "The U.S.A. declared independence. It was 1776.";
-        let sentences = detector.detect_sentences_borrowed(text).unwrap();
-        
-        assert_eq!(sentences.len(), 2);
-        assert!(sentences[0].raw().contains("The U.S.A. declared independence"));
-        assert!(sentences[1].raw().contains("It was 1776"));
-    }
-
-    #[test]
-    fn test_measurement_abbreviations() {
-        let detector = SentenceDetectorDialog::new().unwrap();
-        
-        // Test measurement abbreviations
-        let text = "Distance is 2.5 mi. from here. We can walk it.";
-        let sentences = detector.detect_sentences_borrowed(text).unwrap();
-        
-        assert_eq!(sentences.len(), 2);
-        assert!(sentences[0].raw().contains("Distance is 2.5 mi. from here"));
-        assert!(sentences[1].raw().contains("We can walk it"));
-    }
-
-    #[test]
-    fn test_dialog_with_abbreviations() {
-        let detector = SentenceDetectorDialog::new().unwrap();
-        
-        // Test dialog with abbreviations - this is a more complex case
-        let text = "He said, 'Dr. Smith will see you.' She nodded.";
-        let sentences = detector.detect_sentences_borrowed(text).unwrap();
-        
-        // Should coalesce the dialog and treat "Dr. Smith" as one unit
-        assert_eq!(sentences.len(), 2);
-        assert!(sentences[0].raw().contains("Dr. Smith will see you"));
-        assert!(sentences[1].raw().contains("She nodded"));
-    }
 
     #[test]
     fn test_soft_dialog_transitions() {
-        let detector = SentenceDetectorDialog::new().unwrap();
+        let detector = get_detector();
         
         // Test case 1: comma + quote should soft transition, continue sentence
         let text = "\"Hello,\" she said quietly.";
@@ -997,7 +973,7 @@ mod tests {
 
     #[test]
     fn test_hard_dialog_transitions() {
-        let detector = SentenceDetectorDialog::new().unwrap();
+        let detector = get_detector();
         
         // Test case: exclamation + space + capital should hard transition, create boundary
         let text = "\"Wait!\" he shouted loudly. Then he left.";
@@ -1010,7 +986,7 @@ mod tests {
 
     #[test]
     fn test_colon_paragraph_break_dialog_separation() {
-        let detector = SentenceDetectorDialog::new().unwrap();
+        let detector = get_detector();
         
         // Test case from task: colon + paragraph break + dialog should create sentence boundary
         let text = r#"She looked perplexed for a moment, and then said, not fiercely, but still loud enough for the furniture to hear:
@@ -1030,5 +1006,50 @@ She did not finish, for by this time she was bending down and punching under the
         
         // Second sentence should be the narrative continuation
         assert!(sentences[1].raw().contains("She did not finish"));
+    }
+
+    #[test]
+    fn test_dialog_hard_separator_bug() {
+        let detector = get_detector();
+        
+        // Test case: Hard separator between dialog lines should create separate sentences
+        let input = r#"As the
+young woman spoke, he rose, and advancing to the bed's head, said, with
+more kindness than might have been expected of him:
+
+"Oh, you must not talk about dying yet."
+
+"Lor bless her dear heart, no!" interposed the nurse, hastily
+depositing in her pocket a green glass bottle, the contents of which
+she had been tasting in a corner with evident satisfaction."#;
+
+        let sentences = detector.detect_sentences_borrowed(input).unwrap();
+        
+        assert_eq!(sentences.len(), 2, "Should detect exactly 2 sentences");
+        
+        // Check sentence content
+        assert!(sentences[0].normalize().contains("Oh, you must not talk about dying yet"));
+        assert!(sentences[1].normalize().contains("Lor bless her dear heart, no!"));
+        
+        // Check span positioning - key bug validation
+        assert_eq!(sentences[0].span.end_line, 5, "First sentence should end at line 5");
+        assert_eq!(sentences[1].span.start_line, 7, "Second sentence should start at line 7");
+    }
+
+    #[test]
+    fn test_dialog_hard_separator_minimal() {
+        let detector = get_detector();
+        
+        // Minimal case: colon followed by hard separator and dialog
+        let input = "He said:\n\n\"Hello.\"\n\n\"World.\"";
+        let sentences = detector.detect_sentences_borrowed(input).unwrap();
+        
+        assert_eq!(sentences.len(), 2, "Should detect 2 sentences");
+        assert_eq!(sentences[0].normalize().trim(), "He said: \"Hello.\"");
+        assert_eq!(sentences[1].normalize().trim(), "\"World.\"");
+        
+        // Verify line positions
+        assert_eq!(sentences[0].span.start_line, 1);
+        assert_eq!(sentences[1].span.start_line, 5);
     }
 }

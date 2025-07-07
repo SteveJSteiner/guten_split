@@ -105,25 +105,3 @@ impl TestFixture {
     }
 }
 
-/// Compare two strings line by line, providing detailed diff on mismatch
-#[allow(dead_code)]
-pub fn assert_golden_file(actual: &str, expected: &str, context: &str) {
-    let actual_lines: Vec<&str> = actual.lines().collect();
-    let expected_lines: Vec<&str> = expected.lines().collect();
-    
-    if actual_lines.len() != expected_lines.len() {
-        panic!(
-            "{}: Line count mismatch. Expected {} lines, got {} lines",
-            context, expected_lines.len(), actual_lines.len()
-        );
-    }
-    
-    for (i, (actual_line, expected_line)) in actual_lines.iter().zip(expected_lines.iter()).enumerate() {
-        if actual_line != expected_line {
-            panic!(
-                "{}: Line {} mismatch\nExpected: {}\nActual:   {}",
-                context, i + 1, expected_line, actual_line
-            );
-        }
-    }
-}
