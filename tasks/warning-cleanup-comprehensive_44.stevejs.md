@@ -26,6 +26,7 @@
 * **References:**
   - Current warning analysis from test-architecture-simplification task
   - Rust API guidelines for public interface design
+  - docs/warning-free-compilation.md - Production-grade approach to zero-warning builds
 
 ## Current Warning Analysis:
 
@@ -81,25 +82,26 @@ warning: fields `start_pos`, `end_pos`, and `content` are never read
 
 ## Implementation Strategy:
 
-### Phase 1: API Surface Analysis
-- [ ] Determine which unused methods are intentional public API
-- [ ] Identify which methods are genuinely dead code
-- [ ] Review struct field usage patterns
+**UPDATED**: Analysis revealed that most "dead code" warnings are false positives due to compilation unit boundaries. The correct approach is architectural restructuring per `docs/warning-free-compilation.md`.
 
-### Phase 2: Conditional Compilation  
-- [ ] Add `#[cfg(test)]` for test-only utilities
-- [ ] Add `#[allow(dead_code)]` for future public API with justification
-- [ ] Use feature flags for optional API surface
+### Phase 1: Architectural Assessment ✅ COMPLETE
+- [x] Determined that `DetectedSentenceOwned`, `detect_sentences_owned()` etc. are used by benchmarks
+- [x] Identified that warnings are false positives from cargo build boundaries
+- [x] Fixed genuine issues: type safety violations, snake_case naming
+- [x] Applied `#[cfg(test)]` to truly test-only code
 
-### Phase 3: Dead Code Removal
-- [ ] Remove genuinely unused code that's not part of intended API
-- [ ] Consolidate redundant implementations
-- [ ] Clean up internal-only struct fields
+### Phase 2: Feature-Based Architecture (PENDING)
+Following `docs/warning-free-compilation.md`:
+- [ ] Create `bench-helpers` feature for benchmark-specific APIs
+- [ ] Add `required-features = ["bench-helpers"]` to benchmark targets  
+- [ ] Gate benchmark utilities with `#[cfg(feature = "bench-helpers")]`
+- [ ] Move CLI-only code to `src/bin/seams/` module
+- [ ] Promote shared APIs to `pub(crate)` or document as public
 
-### Phase 4: Public API Decisions
-- [ ] Finalize public re-exports in mod.rs files
-- [ ] Document intended vs accidental public API surface
-- [ ] Ensure API consistency across modules
+### Phase 3: Compilation Unit Ownership
+- [ ] Implement proper feature gating instead of `#[allow(dead_code)]`
+- [ ] Ensure each target only compiles code it actually uses
+- [ ] Update CI to test with `--no-default-features` and `--all-features`
 
 ## Pre-commit checklist:
 - [ ] Zero warnings in `cargo build`

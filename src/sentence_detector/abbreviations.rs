@@ -9,7 +9,8 @@ pub const TITLE_ABBREVIATIONS: &[&str] = &[
     "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr."
 ];
 
-/// All abbreviations that should not cause sentence splits
+/// All abbreviations that should not cause sentence splits  
+#[cfg(test)]
 pub const ABBREVIATIONS: &[&str] = &[
     "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
     "U.S.A.", "U.K.", "N.Y.C.", "L.A.", "D.C.",
@@ -19,6 +20,7 @@ pub const ABBREVIATIONS: &[&str] = &[
 
 /// Efficient abbreviation lookup using HashSet for O(1) performance
 pub struct AbbreviationChecker {
+    #[cfg(test)]
     abbreviations: HashSet<&'static str>,
     title_abbreviations: HashSet<&'static str>,
 }
@@ -27,12 +29,14 @@ impl AbbreviationChecker {
     /// Create new abbreviation checker with default abbreviation sets
     pub fn new() -> Self {
         Self {
+            #[cfg(test)]
             abbreviations: ABBREVIATIONS.iter().copied().collect(),
             title_abbreviations: TITLE_ABBREVIATIONS.iter().copied().collect(),
         }
     }
 
     /// Check if a word is a known abbreviation
+    #[cfg(test)]
     pub fn is_abbreviation(&self, word: &str) -> bool {
         self.abbreviations.contains(word)
     }
@@ -44,6 +48,7 @@ impl AbbreviationChecker {
 
     /// Check if text ends with an abbreviation that should not split sentences
     /// WHY: Examines the last word in context to determine if punctuation is part of abbreviation
+    #[cfg(test)]
     pub fn ends_with_abbreviation(&self, text: &str) -> bool {
         if let Some(last_word) = text.split_whitespace().last() {
             // Remove quotes and other punctuation to get clean word

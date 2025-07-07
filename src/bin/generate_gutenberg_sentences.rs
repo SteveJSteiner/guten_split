@@ -56,9 +56,9 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<String>> {
         // Find the sentence end position based on boundary type
         let potential_end = match boundary_type {
             "dialog_end" | "dialog_to_quote" => {
-                find_dialog_end_position(text, boundary_start)
+                find_dialog_end_position(text, BytePos::new(boundary_start)).0
             },
-            _ => find_punctuation_end(text, boundary_start),
+            _ => find_punctuation_end(text, BytePos::new(boundary_start)).0,
         };
         let preceding_text = &text[last_start..potential_end];
         
@@ -82,12 +82,12 @@ fn detect_sentences_dictionary_enhanced(text: &str) -> Result<Vec<String>> {
             // Find start of next sentence based on boundary type
             last_start = match boundary_type {
                 "dialog_end" | "dialog_to_quote" => {
-                    find_next_sentence_start(text, potential_end)
+                    find_next_sentence_start(text, BytePos::new(potential_end)).0
                 },
                 "quote_start" | "paren_start" => {
-                    find_quote_or_paren_start(text, boundary_start + 1)
+                    find_quote_or_paren_start(text, BytePos::new(boundary_start + 1)).0
                 },
-                _ => find_next_sentence_start(text, boundary_start + 1),
+                _ => find_next_sentence_start(text, BytePos::new(boundary_start + 1)).0,
             };
         }
     }
@@ -121,22 +121,22 @@ fn detect_sentences_dialog_state_machine(text: &str) -> Result<Vec<String>> {
 }
 
 // Helper functions (copied from test implementation)
-fn find_punctuation_end(text: &str, boundary_start: usize) -> usize {
-    let mut char_indices = text[boundary_start..].char_indices();
+fn find_punctuation_end(text: &str, boundary_start: BytePos) -> BytePos {
+    let mut char_indices = text[boundary_start.0..].char_indices();
     
     if let Some((_, _ch)) = char_indices.next() {
         if let Some((next_byte_offset, _)) = char_indices.next() {
-            boundary_start + next_byte_offset
+            boundary_start.advance(next_byte_offset)
         } else {
-            text.len()
+            BytePos::new(text.len())
         }
     } else {
-        text.len()
+        BytePos::new(text.len())
     }
 }
 
-fn find_dialog_end_position(text: &str, boundary_start: usize) -> usize {
-    let mut char_indices = text[boundary_start..].char_indices();
+fn find_dialog_end_position(text: &str, boundary_start: BytePos) -> BytePos {
+    let mut char_indices = text[boundary_start.0..].char_indices();
     
     // Skip the punctuation mark
     if let Some((_, _punctuation)) = char_indices.next() {
@@ -144,38 +144,38 @@ fn find_dialog_end_position(text: &str, boundary_start: usize) -> usize {
         if let Some((_, _quote)) = char_indices.next() {
             // Return position after the quote
             if let Some((next_byte_offset, _)) = char_indices.next() {
-                boundary_start + next_byte_offset
+                boundary_start.advance(next_byte_offset)
             } else {
-                text.len()
+                BytePos::new(text.len())
             }
         } else {
-            boundary_start + 1
+            boundary_start.advance(1)
         }
     } else {
-        text.len()
+        BytePos::new(text.len())
     }
 }
 
-fn find_next_sentence_start(text: &str, start_pos: usize) -> usize {
-    let mut char_indices = text[start_pos..].char_indices();
+fn find_next_sentence_start(text: &str, start_pos: BytePos) -> BytePos {
+    let mut char_indices = text[start_pos.0..].char_indices();
     
     while let Some((byte_offset, ch)) = char_indices.next() {
         if !ch.is_whitespace() {
-            return start_pos + byte_offset;
+            return start_pos.advance(byte_offset);
         }
     }
-    text.len()
+    BytePos::new(text.len())
 }
 
-fn find_quote_or_paren_start(text: &str, start_pos: usize) -> usize {
-    let mut char_indices = text[start_pos..].char_indices();
+fn find_quote_or_paren_start(text: &str, start_pos: BytePos) -> BytePos {
+    let mut char_indices = text[start_pos.0..].char_indices();
     
     while let Some((byte_offset, ch)) = char_indices.next() {
         if !ch.is_whitespace() {
-            return start_pos + byte_offset;
+            return start_pos.advance(byte_offset);
         }
     }
-    text.len()
+    BytePos::new(text.len())
 }
 
 #[tokio::main]

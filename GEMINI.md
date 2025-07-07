@@ -128,6 +128,7 @@ Docs folder	/docs/ for high‑level explainers	Separates narrative docs from cod
 Tests	cargo test in CI	Ensures every task is validated.
 Testing strategy	See docs/testing-strategy.md	10-second budget optimization, I/O test coverage, context management.
 Process improvements	See docs/process-improvement-workflow.md	Workflow for changing development process itself.
+Warning-free builds	See docs/warning-free-compilation.md	Feature gating and compilation unit ownership for zero-warning builds.
 
 Inline WHY comments use this style:
 

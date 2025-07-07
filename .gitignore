@@ -22,3 +22,6 @@ run_stats.json
 
 # Generated test files (regenerated from rules)
 tests/generated_boundary_tests.json
+
+# Environment variables (local configuration)
+.env

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::fs::File;
 use memmap2::{MmapOptions, Mmap};
 use std::time::Instant;
+use dotenvy;
 
 #[derive(Debug, Clone)]
 struct FileResult {
@@ -137,6 +138,9 @@ fn calculate_stats(results: &[FileResult]) -> (f64, f64, f64, f64) {
 }
 
 fn bench_file_by_file_processing(c: &mut Criterion) {
+    // Load environment variables from .env file if it exists
+    dotenvy::dotenv().ok();
+    
     let files = get_sample_files();
     
     if files.is_empty() {

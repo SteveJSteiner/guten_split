@@ -160,14 +160,6 @@ impl PositionTracker {
         ))
     }
     
-    /// Get current position without advancing
-    pub fn current_position(&self) -> (CharPos, OneBasedLine, OneBasedCol) {
-        (
-            CharPos::new(self.current_char_pos),
-            OneBasedLine::new(self.current_line).unwrap(),
-            OneBasedCol::new(self.current_col).unwrap(),
-        )
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -186,8 +178,6 @@ pub enum DialogState {
 /// Internal representation for dialog state machine
 #[derive(Debug, Clone)]
 pub struct DialogDetectedSentence {
-    pub start_pos: CharPos,
-    pub end_pos: CharPos,
     pub start_byte: BytePos,  // Added for O(1) borrowed API
     pub end_byte: BytePos,    // Added for O(1) borrowed API
     pub content: String,
@@ -449,14 +439,12 @@ impl DialogStateMachine {
                                     // Continue processing from current position without advancing sentence_start_byte
                                 } else {
                                     // PHASE 1: Use incremental position tracker instead of O(N) conversions
-                                    let (start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
+                                    let (__start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
                                         .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
-                                    let (end_char, end_line, end_col) = position_tracker.advance_to_byte(sentence_end_byte)
+                                    let (__end_char, end_line, end_col) = position_tracker.advance_to_byte(sentence_end_byte)
                                         .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
                                     
                                     sentences.push(DialogDetectedSentence {
-                                        start_pos: start_char,
-                                        end_pos: end_char,
                                         start_byte: sentence_start_byte,
                                         end_byte: sentence_end_byte,
                                         content,
@@ -492,14 +480,12 @@ impl DialogStateMachine {
                             let content = text[sentence_start_byte.0..sentence_end_byte.0].trim().to_string();
                             if !content.is_empty() {
                                 // PHASE 1: Use incremental position tracker instead of O(N) conversions
-                                let (start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
+                                let (_start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
                                     .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
-                                let (end_char, end_line, end_col) = position_tracker.advance_to_byte(sentence_end_byte)
+                                let (_end_char, end_line, end_col) = position_tracker.advance_to_byte(sentence_end_byte)
                                     .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
                                 
                                 sentences.push(DialogDetectedSentence {
-                                    start_pos: start_char,
-                                    end_pos: end_char,
                                     start_byte: sentence_start_byte,
                                     end_byte: sentence_end_byte,
                                     content,
@@ -530,14 +516,12 @@ impl DialogStateMachine {
                             let content = raw_content.trim_start().trim_end_matches(char::is_whitespace).to_string();
                             if !content.is_empty() {
                                 // PHASE 1: Use incremental position tracker instead of O(N) conversions
-                                let (start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
+                                let (_start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
                                     .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
-                                let (end_char, end_line, end_col) = position_tracker.advance_to_byte(match_start_byte)
+                                let (_end_char, end_line, end_col) = position_tracker.advance_to_byte(match_start_byte)
                                     .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
                                 
                                 sentences.push(DialogDetectedSentence {
-                                    start_pos: start_char,
-                                    end_pos: end_char,
                                     start_byte: sentence_start_byte,
                                     end_byte: match_start_byte,
                                     content,
@@ -562,14 +546,12 @@ impl DialogStateMachine {
                     let content = text[sentence_start_byte.0..].trim().to_string();
                     if !content.is_empty() {
                         // PHASE 1: Use incremental position tracker instead of O(N) conversions
-                        let (start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
+                        let (_start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
                             .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
-                        let (end_char, end_line, end_col) = position_tracker.advance_to_byte(BytePos::new(text.len()))
+                        let (_end_char, end_line, end_col) = position_tracker.advance_to_byte(BytePos::new(text.len()))
                             .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
                         
                         sentences.push(DialogDetectedSentence {
-                            start_pos: start_char,
-                            end_pos: end_char,
                             start_byte: sentence_start_byte,
                             end_byte: BytePos::new(text.len()),
                             content,
@@ -591,14 +573,12 @@ impl DialogStateMachine {
             if !content.is_empty() {
                 // WHY: Create new position tracker for final sentence since main tracker is at end of text
                 let mut final_position_tracker = PositionTracker::new(text);
-                let (start_char, start_line, start_col) = final_position_tracker.advance_to_byte(sentence_start_byte)
+                let (_start_char, start_line, start_col) = final_position_tracker.advance_to_byte(sentence_start_byte)
                     .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
-                let (end_char, end_line, end_col) = final_position_tracker.advance_to_byte(BytePos::new(text.len()))
+                let (_end_char, end_line, end_col) = final_position_tracker.advance_to_byte(BytePos::new(text.len()))
                     .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
                 
                 sentences.push(DialogDetectedSentence {
-                    start_pos: start_char,
-                    end_pos: end_char,
                     start_byte: sentence_start_byte,
                     end_byte: BytePos::new(text.len()),
                     content,
