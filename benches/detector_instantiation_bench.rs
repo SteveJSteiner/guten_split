@@ -134,7 +134,7 @@ fn report_instantiation_characteristics() {
     
     // Estimate test overhead for 38+ instances
     let estimated_test_overhead = single_duration.as_millis() as f64 * 38.0;
-    println!("Estimated test overhead (38 instances): {:.2}ms", estimated_test_overhead);
+    println!("Estimated test overhead (38 instances): {estimated_test_overhead:.2}ms");
     
     // Performance guidance
     println!("\n=== Performance Guidance ===");

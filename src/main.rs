@@ -234,7 +234,7 @@ async fn main() -> Result<()> {
     if std::env::var("SEAMS_DEBUG_API").is_ok() && !valid_files.is_empty() {
         let example_path = &valid_files[0].path;
         let demo_content = "0\tExample usage of public API.\t(1,1,1,27)\n";
-        if let Ok(_) = create_complete_aux_file(example_path, demo_content) {
+        if create_complete_aux_file(example_path, demo_content).is_ok() {
             info!("Created demo aux file using public API for {}", example_path.display());
         }
     }

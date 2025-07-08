@@ -6,8 +6,6 @@ use std::fs;
 use tempfile::TempDir;
 use seams::incremental::{generate_aux_file_path, generate_cache_path};
 
-#[cfg(feature = "test-helpers")]
-use seams::incremental::{aux_file_exists, read_aux_file, create_complete_aux_file, cache_exists, read_cache};
 
 /// Test fixture helper for creating temporary directories with Gutenberg-style files
 pub struct TestFixture {
@@ -45,19 +43,6 @@ impl TestFixture {
         generate_aux_file_path(source_path.as_ref())
     }
     
-    /// Check if aux file exists for given source file
-    /// WHY: Test helper for core incremental processing functionality (F-7, F-9)
-    #[cfg(feature = "test-helpers")]
-    pub fn aux_file_exists<P: AsRef<Path>>(&self, source_path: P) -> bool {
-        aux_file_exists(source_path)
-    }
-    
-    /// Read aux file content for given source file
-    /// WHY: Test helper for core incremental processing functionality (F-7, F-9)
-    #[cfg(feature = "test-helpers")]
-    pub fn read_aux_file<P: AsRef<Path>>(&self, source_path: P) -> Result<String, std::io::Error> {
-        read_aux_file(source_path)
-    }
     
     /// Create a partial aux file (without trailing newline) for testing
     #[allow(dead_code)]
@@ -68,28 +53,9 @@ impl TestFixture {
         aux_path
     }
     
-    /// Create a complete aux file (with trailing newline) for testing
-    /// WHY: Test helper for core incremental processing functionality (F-7, F-9)
-    #[cfg(feature = "test-helpers")]
-    pub fn create_complete_aux_file<P: AsRef<Path>>(&self, source_path: P, content: &str) -> PathBuf {
-        create_complete_aux_file(source_path, content).expect("Failed to write complete aux file")
-    }
-    
     /// Generate cache file path for the test fixture root
     pub fn cache_path(&self) -> PathBuf {
         generate_cache_path(&self.root_path)
-    }
-    
-    /// Check if cache file exists
-    #[cfg(feature = "test-helpers")]
-    pub fn cache_exists(&self) -> bool {
-        cache_exists(&self.root_path)
-    }
-    
-    /// Read cache file content
-    #[cfg(feature = "test-helpers")]
-    pub fn read_cache(&self) -> Result<String, std::io::Error> {
-        read_cache(&self.root_path)
     }
     
     /// Create a cache file with specific content for testing

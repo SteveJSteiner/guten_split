@@ -51,7 +51,7 @@ pub fn create_complete_aux_file<P: AsRef<Path>>(source_path: P, content: &str) -
     let content_with_newline = if content.ends_with('\n') { 
         content.to_string() 
     } else { 
-        format!("{}\n", content) 
+        format!("{content}\n") 
     };
     fs::write(&aux_path, content_with_newline)?;
     Ok(aux_path)

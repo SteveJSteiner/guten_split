@@ -91,7 +91,7 @@ mod tests {
     static SHARED_CHECKER: OnceLock<AbbreviationChecker> = OnceLock::new();
     
     fn get_checker() -> &'static AbbreviationChecker {
-        SHARED_CHECKER.get_or_init(|| AbbreviationChecker::new())
+        SHARED_CHECKER.get_or_init(AbbreviationChecker::new)
     }
 
     #[test]
@@ -101,14 +101,14 @@ mod tests {
         // Test basic abbreviation detection
         let abbreviations = ["Dr.", "U.S.A.", "p.m.", "Prof.", "mi."];
         for abbr in &abbreviations {
-            assert!(checker.is_abbreviation(abbr), "Should detect {} as abbreviation", abbr);
+            assert!(checker.is_abbreviation(abbr), "Should detect {abbr} as abbreviation");
         }
         assert!(!checker.is_abbreviation("Hello"));
         
         // Test title vs non-title abbreviation classification
         let title_abbreviations = ["Dr.", "Prof.", "Mr.", "Mrs."];
         for abbr in &title_abbreviations {
-            assert!(checker.is_title_abbreviation(abbr), "Should detect {} as title abbreviation", abbr);
+            assert!(checker.is_title_abbreviation(abbr), "Should detect {abbr} as title abbreviation");
         }
         assert!(!checker.is_title_abbreviation("U.S.A."));
         assert!(!checker.is_title_abbreviation("p.m."));
@@ -123,7 +123,7 @@ mod tests {
         ];
         for (text, should_end_with_abbr) in &ending_tests {
             assert_eq!(checker.ends_with_abbreviation(text), *should_end_with_abbr, 
-                "ends_with_abbreviation failed for: {}", text);
+                "ends_with_abbreviation failed for: {text}");
         }
         
         // Test punctuation handling with quotes (only quotes are stripped, not other punctuation)
@@ -134,7 +134,7 @@ mod tests {
         ];
         for (text, should_detect) in &punctuation_tests {
             assert_eq!(checker.ends_with_abbreviation(text), *should_detect,
-                "Punctuation handling failed for: {}", text);
+                "Punctuation handling failed for: {text}");
         }
     }
 }

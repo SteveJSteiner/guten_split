@@ -34,6 +34,25 @@ flowchart LR
 
 ⸻
 
+2.3 Warning-Free Build Requirement
+
+**ZERO WARNINGS ACROSS ALL SCENARIOS** — Every development scenario documented in docs/manual-commands.md MUST produce zero warnings.
+
+	•	**Comprehensive Coverage**: All build configurations, test scenarios, feature combinations, and code quality checks must be warning-free.
+	•	**No dead_code Suppression**: NEVER use #[allow(dead_code)] — if code isn't used, either use it or remove it.
+	•	**Validation Script**: Use scripts/validate_warning_free.sh to verify all scenarios are warning-free.
+	•	**Automatic Enforcement**: CI pipeline blocks merges with any warnings.
+	•	**Public API Usage**: CLI must actually use all public API functions to prevent false positive dead code warnings.
+
+**Validation Command:**
+```bash
+./scripts/validate_warning_free.sh
+```
+
+This script tests every scenario from docs/manual-commands.md and reports any warnings found. ALL scenarios must pass with zero warnings.
+
+⸻
+
 3 Task File Schema
 
 Each file lives under /tasks/ and follows this template:
@@ -58,7 +77,7 @@ Each file lives under /tasks/ and follows this template:
 - [ ] Tests passing (`cargo test`)
 - [ ] Claims validated (`cargo test -- --nocapture | grep -E "(concurrent|parallel|faster|optimized)"` + manual verification)
 - [ ] Documentation updated if needed
-- [ ] Clippy warnings addressed
+- [ ] **ZERO WARNINGS**: `./scripts/validate_warning_free.sh` passes completely
 
 (Claude auto‑fills the template when generating the task.)
 

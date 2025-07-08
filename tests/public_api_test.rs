@@ -41,7 +41,7 @@ fn test_aux_file_operations() {
     let read_content_with_newline = read_aux_file(&source_file)
         .expect("Failed to read aux file");
     assert!(read_content_with_newline.ends_with('\n'), "Content should have trailing newline");
-    assert_eq!(read_content_with_newline, format!("{}\n", content_without_newline));
+    assert_eq!(read_content_with_newline, format!("{content_without_newline}\n"));
 }
 
 #[test]

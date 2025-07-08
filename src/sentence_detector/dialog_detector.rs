@@ -289,8 +289,8 @@ impl DialogStateMachine {
         let dialog_open_chars = r"[\x22\x27\u{201C}\u{2018}\(\[\{]";
         
         // Composed patterns with visible logic
-        let narrative_soft_boundary = format!("{}{}{}", sentence_end_punct, soft_separator, sentence_start_chars);
-        let narrative_hard_boundary = format!(r"{}\s*{}\s*{}", sentence_end_punct, hard_separator, sentence_start_chars);
+        let narrative_soft_boundary = format!("{sentence_end_punct}{soft_separator}{sentence_start_chars}");
+        let narrative_hard_boundary = format!(r"{sentence_end_punct}\s*{hard_separator}\s*{sentence_start_chars}");
         let pure_hard_sep = hard_separator.to_string();  // standalone hard separator (will need context check)
         
         // Dialog closing characters
@@ -305,73 +305,65 @@ impl DialogStateMachine {
         // Dialog ending patterns: HARD_END (sentence boundary) vs SOFT_END (just dialog close)
         // HARD_END: sentence_end + close + separator + sentence_start (creates sentence boundary)
         // SOFT_END: just close (needs state transition logic)
-        let dialog_hard_double_end = format!("{}{}{}{}", sentence_end_punct, double_quote_close, soft_separator, sentence_start_chars);
-        let dialog_soft_double_end = format!("{}", double_quote_close);
-        let dialog_double_end = format!("(?:{})|(?:{})", dialog_hard_double_end, dialog_soft_double_end);
+        let dialog_hard_double_end = format!("{sentence_end_punct}{double_quote_close}{soft_separator}{sentence_start_chars}");
+        let dialog_soft_double_end = double_quote_close.to_string();
+        let dialog_double_end = format!("(?:{dialog_hard_double_end})|(?:{dialog_soft_double_end})");
         
-        let dialog_hard_single_end = format!("{}{}{}{}", sentence_end_punct, single_quote_close, soft_separator, sentence_start_chars);
-        let dialog_soft_single_end = format!("{}", single_quote_close);
-        let dialog_single_end = format!("(?:{})|(?:{})", dialog_hard_single_end, dialog_soft_single_end);
+        let dialog_hard_single_end = format!("{sentence_end_punct}{single_quote_close}{soft_separator}{sentence_start_chars}");
+        let dialog_soft_single_end = single_quote_close.to_string();
+        let dialog_single_end = format!("(?:{dialog_hard_single_end})|(?:{dialog_soft_single_end})");
         
-        let dialog_hard_smart_double_end = format!("{}{}{}{}", sentence_end_punct, smart_double_close, soft_separator, sentence_start_chars);
-        let dialog_soft_smart_double_end = format!("{}", smart_double_close);
-        let dialog_smart_double_end = format!("(?:{})|(?:{})", dialog_hard_smart_double_end, dialog_soft_smart_double_end);
+        let dialog_hard_smart_double_end = format!("{sentence_end_punct}{smart_double_close}{soft_separator}{sentence_start_chars}");
+        let dialog_soft_smart_double_end = smart_double_close.to_string();
+        let dialog_smart_double_end = format!("(?:{dialog_hard_smart_double_end})|(?:{dialog_soft_smart_double_end})");
         
-        let dialog_hard_smart_single_end = format!("{}{}{}{}", sentence_end_punct, smart_single_close, soft_separator, sentence_start_chars);
-        let dialog_soft_smart_single_end = format!("{}", smart_single_close);
-        let dialog_smart_single_end = format!("(?:{})|(?:{})", dialog_hard_smart_single_end, dialog_soft_smart_single_end);
+        let dialog_hard_smart_single_end = format!("{sentence_end_punct}{smart_single_close}{soft_separator}{sentence_start_chars}");
+        let dialog_soft_smart_single_end = smart_single_close.to_string();
+        let dialog_smart_single_end = format!("(?:{dialog_hard_smart_single_end})|(?:{dialog_soft_smart_single_end})");
         
-        let dialog_hard_paren_round_end = format!("{}{}{}{}", sentence_end_punct, round_paren_close, soft_separator, sentence_start_chars);
-        let dialog_soft_paren_round_end = format!("{}", round_paren_close);
-        let dialog_paren_round_end = format!("(?:{})|(?:{})", dialog_hard_paren_round_end, dialog_soft_paren_round_end);
+        let dialog_hard_paren_round_end = format!("{sentence_end_punct}{round_paren_close}{soft_separator}{sentence_start_chars}");
+        let dialog_soft_paren_round_end = round_paren_close.to_string();
+        let dialog_paren_round_end = format!("(?:{dialog_hard_paren_round_end})|(?:{dialog_soft_paren_round_end})");
         
-        let dialog_hard_paren_square_end = format!("{}{}{}{}", sentence_end_punct, square_bracket_close, soft_separator, sentence_start_chars);
-        let dialog_soft_paren_square_end = format!("{}", square_bracket_close);
-        let dialog_paren_square_end = format!("(?:{})|(?:{})", dialog_hard_paren_square_end, dialog_soft_paren_square_end);
+        let dialog_hard_paren_square_end = format!("{sentence_end_punct}{square_bracket_close}{soft_separator}{sentence_start_chars}");
+        let dialog_soft_paren_square_end = square_bracket_close.to_string();
+        let dialog_paren_square_end = format!("(?:{dialog_hard_paren_square_end})|(?:{dialog_soft_paren_square_end})");
         
-        let dialog_hard_paren_curly_end = format!("{}{}{}{}", sentence_end_punct, curly_brace_close, soft_separator, sentence_start_chars);
-        let dialog_soft_paren_curly_end = format!("{}", curly_brace_close);
-        let dialog_paren_curly_end = format!("(?:{})|(?:{})", dialog_hard_paren_curly_end, dialog_soft_paren_curly_end);
+        let dialog_hard_paren_curly_end = format!("{sentence_end_punct}{curly_brace_close}{soft_separator}{sentence_start_chars}");
+        let dialog_soft_paren_curly_end = curly_brace_close.to_string();
+        let dialog_paren_curly_end = format!("(?:{dialog_hard_paren_curly_end})|(?:{dialog_soft_paren_curly_end})");
         
         // Build state-specific patterns with visible composition  
         let narrative_pattern = format!(
-            "(?:{})|(?:{})|(?:{})|(?:{})",
-            narrative_soft_boundary, narrative_hard_boundary, pure_hard_sep, dialog_open_chars
+            "(?:{narrative_soft_boundary})|(?:{narrative_hard_boundary})|(?:{pure_hard_sep})|(?:{dialog_open_chars})"
         );
         
         let dialog_double_pattern = format!(
-            "(?:{})|(?:{})",
-            dialog_double_end, pure_hard_sep
+            "(?:{dialog_double_end})|(?:{pure_hard_sep})"
         );
         
         let dialog_single_pattern = format!(
-            "(?:{})|(?:{})",
-            dialog_single_end, pure_hard_sep
+            "(?:{dialog_single_end})|(?:{pure_hard_sep})"
         );
         
         let dialog_smart_double_pattern = format!(
-            "(?:{})|(?:{})",
-            dialog_smart_double_end, pure_hard_sep
+            "(?:{dialog_smart_double_end})|(?:{pure_hard_sep})"
         );
         
         let dialog_smart_single_pattern = format!(
-            "(?:{})|(?:{})",
-            dialog_smart_single_end, pure_hard_sep
+            "(?:{dialog_smart_single_end})|(?:{pure_hard_sep})"
         );
         
         let dialog_paren_round_pattern = format!(
-            "(?:{})|(?:{})",
-            dialog_paren_round_end, pure_hard_sep
+            "(?:{dialog_paren_round_end})|(?:{pure_hard_sep})"
         );
         
         let dialog_paren_square_pattern = format!(
-            "(?:{})|(?:{})",
-            dialog_paren_square_end, pure_hard_sep
+            "(?:{dialog_paren_square_end})|(?:{pure_hard_sep})"
         );
         
         let dialog_paren_curly_pattern = format!(
-            "(?:{})|(?:{})",
-            dialog_paren_curly_end, pure_hard_sep
+            "(?:{dialog_paren_curly_end})|(?:{pure_hard_sep})"
         );
         
         // Compile patterns
@@ -875,7 +867,7 @@ mod tests {
         
         for (text, expected_count, expected_content) in test_cases {
             let sentences = detector.detect_sentences_borrowed(text).unwrap();
-            assert_eq!(sentences.len(), expected_count, "Failed for text: {}", text);
+            assert_eq!(sentences.len(), expected_count, "Failed for text: {text}");
             
             for (i, expected) in expected_content.iter().enumerate() {
                 assert!(sentences[i].raw_content.contains(expected), 

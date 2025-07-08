@@ -307,7 +307,7 @@ mod tests {
         
         // Create invalid UTF-8 file
         let invalid_path = temp_dir.path().join("invalid-0.txt");
-        std::fs::write(&invalid_path, &[0xFF, 0xFE, 0xFD]).unwrap();
+        std::fs::write(&invalid_path, [0xFF, 0xFE, 0xFD]).unwrap();
         
         let files = collect_discovered_files(temp_dir.path(), config).await.unwrap();
         assert_eq!(files.len(), 2);
@@ -333,7 +333,7 @@ mod tests {
         {
             use std::os::unix::fs::PermissionsExt;
             let mut perms = std::fs::metadata(&file_path).unwrap().permissions();
-            perms.set_mode(0000);
+            perms.set_mode(0o0000);
             std::fs::set_permissions(&file_path, perms).unwrap();
             
             let result = collect_discovered_files(temp_dir.path(), config).await;

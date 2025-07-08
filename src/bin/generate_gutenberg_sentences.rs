@@ -157,9 +157,9 @@ fn find_dialog_end_position(text: &str, boundary_start: BytePos) -> BytePos {
 }
 
 fn find_next_sentence_start(text: &str, start_pos: BytePos) -> BytePos {
-    let mut char_indices = text[start_pos.0..].char_indices();
+    let char_indices = text[start_pos.0..].char_indices();
     
-    while let Some((byte_offset, ch)) = char_indices.next() {
+    for (byte_offset, ch) in char_indices {
         if !ch.is_whitespace() {
             return start_pos.advance(byte_offset);
         }
@@ -168,9 +168,9 @@ fn find_next_sentence_start(text: &str, start_pos: BytePos) -> BytePos {
 }
 
 fn find_quote_or_paren_start(text: &str, start_pos: BytePos) -> BytePos {
-    let mut char_indices = text[start_pos.0..].char_indices();
+    let char_indices = text[start_pos.0..].char_indices();
     
-    while let Some((byte_offset, ch)) = char_indices.next() {
+    for (byte_offset, ch) in char_indices {
         if !ch.is_whitespace() {
             return start_pos.advance(byte_offset);
         }
@@ -188,17 +188,17 @@ async fn main() -> Result<()> {
     let mirror_dir = std::env::var("GUTENBERG_MIRROR_DIR")
         .unwrap_or_else(|_| {
             let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            format!("{}/gutenberg_texts", home)
+            format!("{home}/gutenberg_texts")
         });
     let root_dir = PathBuf::from(mirror_dir);
     
     if !root_dir.exists() {
-        eprintln!("❌ Gutenberg mirror directory {:?} does not exist", root_dir);
+        eprintln!("❌ Gutenberg mirror directory {root_dir:?} does not exist");
         eprintln!("   Set GUTENBERG_MIRROR_DIR environment variable or ensure ~/gutenberg_texts exists");
         return Ok(());
     }
     
-    println!("📂 Scanning directory: {:?}", root_dir);
+    println!("📂 Scanning directory: {root_dir:?}");
     
     // Discover all files
     let discovery_config = DiscoveryConfig::default();
@@ -219,8 +219,8 @@ async fn main() -> Result<()> {
     for file_info in &valid_files {
         let file_path = &file_info.path;
         let base_extension = file_path.extension().and_then(|s| s.to_str()).unwrap_or("txt");
-        let sentences_path = file_path.with_extension(format!("{}.norm_sents", base_extension));
-        let sm_sentences_path = file_path.with_extension(format!("{}.norm_sm_sents", base_extension));
+        let sentences_path = file_path.with_extension(format!("{base_extension}.norm_sents"));
+        let sm_sentences_path = file_path.with_extension(format!("{base_extension}.norm_sm_sents"));
         
         // Check if both files already exist
         let dict_exists = sentences_path.exists();
@@ -250,9 +250,9 @@ async fn main() -> Result<()> {
     }
     
     println!("\n🎉 Generation complete!");
-    println!("   📄 Processed: {} files", processed);
-    println!("   ⏭️  Skipped: {} files (already had both sentence files)", skipped);
-    println!("   ❌ Errors: {} files", errors);
+    println!("   📄 Processed: {processed} files");
+    println!("   ⏭️  Skipped: {skipped} files (already had both sentence files)");
+    println!("   ❌ Errors: {errors} files");
     
     if processed > 0 {
         println!("\n💡 Sentence files created with two strategies:");
@@ -263,8 +263,8 @@ async fn main() -> Result<()> {
         // Show some examples
         if let Some(first_file) = valid_files.first() {
             let base_ext = first_file.path.extension().and_then(|s| s.to_str()).unwrap_or("txt");
-            let dict_path = first_file.path.with_extension(format!("{}.norm_sents", base_ext));
-            let sm_path = first_file.path.with_extension(format!("{}.norm_sm_sents", base_ext));
+            let dict_path = first_file.path.with_extension(format!("{base_ext}.norm_sents"));
+            let sm_path = first_file.path.with_extension(format!("{base_ext}.norm_sm_sents"));
             
             if dict_path.exists() {
                 println!("   📝 Example dictionary file: {}", dict_path.display());

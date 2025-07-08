@@ -1,0 +1,47 @@
+name: Warning-Free Validation
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+jobs:
+  warning-free-validation:
+    name: Enforce Zero Warnings Across All Scenarios
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        components: clippy
+        
+    - name: Cache cargo dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+    
+    - name: Make validation script executable
+      run: chmod +x ./scripts/validate_warning_free.sh
+        
+    - name: Run Comprehensive Warning-Free Validation
+      run: ./scripts/validate_warning_free.sh
+      
+    - name: Fail if any warnings found
+      run: |
+        if [ $? -ne 0 ]; then
+          echo "❌ CI BLOCKED: Warnings detected across development scenarios"
+          echo "All scenarios in docs/manual-commands.md must be warning-free"
+          echo "Run ./scripts/validate_warning_free.sh locally to identify issues"
+          exit 1
+        fi
+        echo "✅ SUCCESS: All scenarios are warning-free"

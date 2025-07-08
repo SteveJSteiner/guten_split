@@ -1,5 +1,4 @@
 // use std::path::PathBuf;
-use tokio;
 use seams::{discovery, reader, sentence_detector};
 
 #[path = "integration/mod.rs"]
@@ -13,7 +12,7 @@ async fn test_pipeline_invalid_utf8() {
     
     // Create file with invalid UTF-8 bytes
     let invalid_path = fixture.root_path.join("invalid-0.txt");
-    std::fs::write(&invalid_path, &[0xFF, 0xFE, 0xFD]).expect("Failed to write invalid UTF-8 file");
+    std::fs::write(&invalid_path, [0xFF, 0xFE, 0xFD]).expect("Failed to write invalid UTF-8 file");
     
     // Discovery should exclude invalid UTF-8 files
     let files = discovery::find_gutenberg_files(&fixture.root_path).await
@@ -178,7 +177,7 @@ async fn test_pipeline_long_paths() {
     
     // Create a deeply nested structure with long names
     let long_path = "very_long_directory_name/another_very_long_directory_name/yet_another_long_name/final_directory";
-    let file_path_str = format!("{}/extremely_long_filename_that_tests_path_limits-0.txt", long_path);
+    let file_path_str = format!("{long_path}/extremely_long_filename_that_tests_path_limits-0.txt");
     
     fixture.create_gutenberg_file(&file_path_str, "Content in deeply nested file.");
     

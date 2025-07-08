@@ -75,7 +75,7 @@ fn expand_rule(rule: &Rule, category: &str) -> Vec<GeneratedTestCase> {
     for &end_char in &end_chars {
         for &separator in &separators {
             for &start_char in &start_chars {
-                let pattern = format!("{}{}{}", end_char, separator, start_char);
+                let pattern = format!("{end_char}{separator}{start_char}");
                 
                 // Skip empty patterns
                 if pattern.trim().is_empty() {
@@ -181,7 +181,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let filename = path.file_name().unwrap().to_str().unwrap();
             source_files.push(filename.to_string());
             
-            println!("Processing rule file: {}", filename);
+            println!("Processing rule file: {filename}");
             
             let json_content = fs::read_to_string(&path)?;
             let category_rules: CategoryRules = serde_json::from_str(&json_content)?;
@@ -219,7 +219,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Generated {} test cases from {} rule files", 
         generated_data.test_cases.len(), 
         generated_data.generated_from.len());
-    println!("Output written to: {}", output_path);
+    println!("Output written to: {output_path}");
     
     // Print breakdown by category
     let mut category_counts = std::collections::HashMap::new();
@@ -229,7 +229,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     println!("\nBreakdown by category:");
     for (category, count) in category_counts {
-        println!("  {}: {} test cases", category, count);
+        println!("  {category}: {count} test cases");
     }
     
     Ok(())

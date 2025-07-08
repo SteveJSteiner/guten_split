@@ -69,6 +69,6 @@ async fn test_file_discovery_and_processing() {
         let sentences = detector.detect_sentences(&content)
             .expect("Sentence detection should succeed");
         
-        assert!(!sentences.is_empty(), "File {:?} should produce sentences", file_path);
+        assert!(!sentences.is_empty(), "File {file_path:?} should produce sentences");
     }
 }
