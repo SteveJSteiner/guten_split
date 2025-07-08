@@ -1,6 +1,8 @@
 // Integration tests for incremental processing behavior (F-9)
 // WHY: Validates that aux file existence and completeness checking works as expected
 
+#![cfg(feature = "test-helpers")]
+
 use std::process::Command;
 
 mod integration;

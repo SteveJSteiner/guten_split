@@ -12,5 +12,5 @@ pub use sentence_detector::{
 // Re-export incremental processing utilities
 pub use incremental::{
     generate_aux_file_path, aux_file_exists, read_aux_file, 
-    create_complete_aux_file, generate_cache_path, cache_exists, read_cache
+    create_complete_aux_file, generate_cache_path, cache_exists, read_cache, read_cache_async
 };

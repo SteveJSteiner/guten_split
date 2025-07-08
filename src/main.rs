@@ -13,7 +13,7 @@ mod reader;
 mod sentence_detector;
 mod incremental;
 
-use crate::incremental::{generate_aux_file_path, generate_cache_path};
+use crate::incremental::{generate_aux_file_path, generate_cache_path, cache_exists, read_cache_async, aux_file_exists, read_aux_file, create_complete_aux_file, read_cache};
 
 /// Cache for tracking completed auxiliary files
 /// WHY: Provides robust incremental processing by tracking completion timestamps
@@ -26,12 +26,12 @@ struct ProcessingCache {
 impl ProcessingCache {
     /// Load cache from file, returns empty cache if file doesn't exist or is corrupted
     /// WHY: Fail-safe approach - missing/corrupted cache just means reprocessing everything
-    async fn load(cache_path: &Path) -> Self {
-        if !cache_path.exists() {
+    async fn load(root_dir: &Path) -> Self {
+        if !cache_exists(root_dir) {
             return Self::default();
         }
         
-        match tokio::fs::read_to_string(cache_path).await {
+        match read_cache_async(root_dir).await {
             Ok(content) => {
                 match serde_json::from_str(&content) {
                     Ok(cache) => cache,
@@ -69,8 +69,7 @@ impl ProcessingCache {
                 .as_secs();
             
             // Also verify aux file still exists
-            let aux_path = generate_aux_file_path(source_path);
-            if !aux_path.exists() {
+            if !aux_file_exists(source_path) {
                 info!("Aux file missing for {}, reprocessing", source_path.display());
                 return Ok(false);
             }
@@ -231,14 +230,29 @@ async fn main() -> Result<()> {
     println!("Found {} files matching pattern *-0.txt", discovered_files.len());
     println!("Valid files: {}, Files with issues: {}", valid_files.len(), invalid_files.len());
     
+    // WHY: Demonstrate public API usage for external developers (minimal example)
+    if std::env::var("SEAMS_DEBUG_API").is_ok() && !valid_files.is_empty() {
+        let example_path = &valid_files[0].path;
+        let demo_content = "0\tExample usage of public API.\t(1,1,1,27)\n";
+        if let Ok(_) = create_complete_aux_file(example_path, demo_content) {
+            info!("Created demo aux file using public API for {}", example_path.display());
+        }
+    }
+    
     // Process valid files with async reader
     if !valid_files.is_empty() {
         info!("Starting async file reading for {} valid files", valid_files.len());
         
         // WHY: Load processing cache for incremental processing
         let cache_path = generate_cache_path(&args.root_dir);
-        let mut cache = ProcessingCache::load(&cache_path).await;
+        let mut cache = ProcessingCache::load(&args.root_dir).await;
         info!("Loaded processing cache from {}", cache_path.display());
+        
+        // WHY: Log cache status for debugging (sync API usage)
+        if let Ok(cache_content) = read_cache(&args.root_dir) {
+            let cache_size = cache_content.len();
+            info!("Cache file size: {} bytes", cache_size);
+        }
         
         let reader_config = reader::ReaderConfig {
             fail_fast: args.fail_fast,
@@ -304,11 +318,21 @@ async fn main() -> Result<()> {
                         info!("Detected {} sentences in {}", sentence_count, stats.file_path);
                         
                         // WHY: generate auxiliary file as per F-7 requirement
+                        // Note: For simple aux file creation, external users can use create_complete_aux_file()
                         let aux_path = generate_aux_file_path(source_path);
                         
                         match write_auxiliary_file(&aux_path, &sentences, &sentence_detector).await {
                             Ok(()) => {
                                 info!("Successfully wrote auxiliary file: {}", aux_path.display());
+                                
+                                // WHY: validate aux file was written correctly using public API
+                                if let Ok(aux_content) = read_aux_file(source_path) {
+                                    let line_count = aux_content.lines().count();
+                                    if line_count != sentence_count as usize {
+                                        info!("Warning: aux file line count ({}) doesn't match sentence count ({})", 
+                                              line_count, sentence_count);
+                                    }
+                                }
                                 
                                 // WHY: mark file as completed in cache after successful aux file write
                                 cache.mark_completed(source_path);

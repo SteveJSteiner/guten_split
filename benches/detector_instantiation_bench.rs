@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
-use seams::SentenceDetectorDialog;
+use seams::sentence_detector::dialog_detector::SentenceDetectorDialog;
 use std::time::Duration;
 
 /// Benchmark detector instantiation to measure regex compilation overhead

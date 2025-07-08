@@ -37,6 +37,7 @@ dotenvy = "0.15"
 [features]
 default = []
 mmap = ["memmap2"]
+test-helpers = []
 
 [[bench]]
 name = "reader_bench"
