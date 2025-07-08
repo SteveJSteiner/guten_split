@@ -74,9 +74,32 @@
 - [ ] Remove confusion about optional vs mandatory
 
 ## Pre-commit checklist:
-- [ ] Core CLI works with `cargo build` (no features)
-- [ ] Core CLI works with `cargo run -- --help` (no features)
-- [ ] All tests pass with default features
-- [ ] Optional features work when enabled
-- [ ] Documentation accurately reflects architecture
-- [ ] No core functionality behind feature flags
+- [x] Core CLI works with `cargo build` (no features)
+- [x] Core CLI works with `cargo run -- --help` (no features)
+- [x] All tests pass with default features
+- [x] Optional features work when enabled
+- [x] Documentation accurately reflects architecture
+- [x] No core functionality behind feature flags
+
+## COMPLETION NOTES
+**Date:** 2025-07-08
+**Completed through:** File discovery cache optimization work
+
+**Changes Made:**
+- memmap2 moved from optional to core dependency in Cargo.toml
+- Only `test-helpers` remains as optional feature
+- CLI core functionality works without any feature flags
+- All benchmarks work by default
+- Architecture follows documented principles
+
+**Current Feature Architecture:**
+- **Mandatory (no flags):** All CLI functionality, mmap, benchmarks, core API
+- **Optional (flagged):** Only `test-helpers` for integration test utilities
+
+**Verification Results:**
+- ✅ `cargo build` works without features
+- ✅ `cargo run --bin seams -- --help` works
+- ✅ All tests pass with default features
+- ✅ Feature architecture matches principles
+
+**Task Status:** COMPLETED - Feature flag architecture cleaned up, core functionality unconditional

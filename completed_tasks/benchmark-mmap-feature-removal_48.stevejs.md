@@ -46,11 +46,28 @@
 - [ ] Run warning-free validation script to ensure no regressions
 
 ## Pre-commit checklist:
-- [ ] All deliverables implemented
-- [ ] Tests passing (`cargo test`)
-- [ ] Claims validated (`cargo test -- --nocapture | grep -E "(concurrent|parallel|faster|optimized)"` + manual verification)
-- [ ] Documentation updated if needed
-- [ ] **ZERO WARNINGS**: `./scripts/validate_warning_free.sh` passes completely
-- [ ] Benchmark runs successfully: `cargo bench --bench file_by_file_bench`
-- [ ] No feature flags required: benchmark works with default configuration
-- [ ] memmap2 is now a core dependency, not optional
+- [x] All deliverables implemented
+- [x] Tests passing (`cargo test`)
+- [x] Claims validated (`cargo test -- --nocapture | grep -E "(concurrent|parallel|faster|optimized)"` + manual verification)
+- [x] Documentation updated if needed
+- [x] **ZERO WARNINGS**: `./scripts/validate_warning_free.sh` passes completely
+- [x] Benchmark runs successfully: `cargo bench --bench file_by_file_bench`
+- [x] No feature flags required: benchmark works with default configuration
+- [x] memmap2 is now a core dependency, not optional
+
+## COMPLETION NOTES
+**Date:** 2025-07-08
+**Completed through:** File discovery cache optimization work
+
+**Changes Made:**
+- memmap2 moved to core dependencies in Cargo.toml (line 27)
+- No mmap feature flag exists in [features] section
+- Benchmark verified working without feature flags
+- Zero warnings validation passes
+
+**Verification Results:**
+- ✅ `cargo bench --bench file_by_file_bench` works without flags
+- ✅ Zero warnings across all scenarios
+- ✅ memmap2 available by default
+
+**Task Status:** COMPLETED - Benchmark available without feature flags, memmap2 is core dependency

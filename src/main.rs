@@ -17,12 +17,28 @@ mod incremental;
 
 use crate::incremental::{generate_aux_file_path, generate_cache_path, cache_exists, read_cache_async, aux_file_exists, create_complete_aux_file, read_cache};
 
-/// Cache for tracking completed auxiliary files
-/// WHY: Provides robust incremental processing by tracking completion timestamps
+/// Comprehensive file metadata for both discovery and processing cache
+/// WHY: Unified structure reduces duplication and simplifies cache management
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct FileMetadata {
+    /// File size in bytes
+    size: u64,
+    /// Last modification timestamp (seconds since epoch)
+    modified: u64,
+    /// Whether file passed UTF-8 validation
+    is_valid_utf8: bool,
+    /// Processing completion timestamp (None if not yet processed)
+    completed_at: Option<u64>,
+}
+
+/// Unified cache for file discovery and processing state
+/// WHY: Single source of truth for all file state, eliminating redundancy
 #[derive(Serialize, Deserialize, Debug, Default, Clone)]
 struct ProcessingCache {
-    /// Map from source file path to completion timestamp (seconds since epoch)
-    completed_files: HashMap<String, u64>,
+    /// Map from source file path to comprehensive metadata
+    files: HashMap<String, FileMetadata>,
+    /// Timestamp when file discovery was last performed
+    discovery_timestamp: Option<u64>,
 }
 
 impl ProcessingCache {
@@ -63,20 +79,24 @@ impl ProcessingCache {
     async fn is_file_processed(&self, source_path: &Path) -> Result<bool> {
         let source_path_str = source_path.to_string_lossy().to_string();
         
-        if let Some(&completion_timestamp) = self.completed_files.get(&source_path_str) {
-            // Check if source file has been modified since completion
-            let source_metadata = tokio::fs::metadata(source_path).await?;
-            let source_modified = source_metadata.modified()?
-                .duration_since(SystemTime::UNIX_EPOCH)?
-                .as_secs();
-            
-            // Also verify aux file still exists
-            if !aux_file_exists(source_path) {
-                info!("Aux file missing for {}, reprocessing", source_path.display());
-                return Ok(false);
+        if let Some(file_meta) = self.files.get(&source_path_str) {
+            if let Some(completion_timestamp) = file_meta.completed_at {
+                // Check if source file has been modified since completion
+                let source_metadata = tokio::fs::metadata(source_path).await?;
+                let source_modified = source_metadata.modified()?
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_secs();
+                
+                // Also verify aux file still exists
+                if !aux_file_exists(source_path) {
+                    info!("Aux file missing for {}, reprocessing", source_path.display());
+                    return Ok(false);
+                }
+                
+                Ok(source_modified <= completion_timestamp)
+            } else {
+                Ok(false)
             }
-            
-            Ok(source_modified <= completion_timestamp)
         } else {
             Ok(false)
         }
@@ -90,15 +110,121 @@ impl ProcessingCache {
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        self.completed_files.insert(source_path_str, now);
+        
+        // Update existing entry or create new one
+        if let Some(file_meta) = self.files.get_mut(&source_path_str) {
+            file_meta.completed_at = Some(now);
+        } else {
+            // This shouldn't happen if discovery was done properly, but handle gracefully
+            info!("Marking completion for undiscovered file: {}", source_path.display());
+            self.files.insert(source_path_str, FileMetadata {
+                size: 0, // Will be updated on next discovery
+                modified: 0,
+                is_valid_utf8: true, // Assume valid if we processed it
+                completed_at: Some(now),
+            });
+        }
+    }
+    
+    /// Check if file discovery cache is valid for given root directory
+    /// WHY: Implements cache invalidation logic based on file-level verification
+    async fn is_discovery_cache_valid(&self, _root_dir: &Path) -> Result<bool> {
+        // Check if we have discovery metadata at all
+        if self.discovery_timestamp.is_none() || self.files.is_empty() {
+            return Ok(false);
+        }
+        
+        // For performance, we validate cached files during get_cached_discovered_files
+        // This method only checks if we have any cached discovery data
+        Ok(true)
+    }
+    
+    /// Get cached discovered files if cache is valid
+    /// WHY: Provides fast restart by avoiding directory traversal when possible
+    async fn get_cached_discovered_files(&self, root_dir: &Path) -> Result<Option<Vec<discovery::FileValidation>>> {
+        if !self.is_discovery_cache_valid(root_dir).await? {
+            return Ok(None);
+        }
+        
+        let mut files = Vec::new();
+        for (path_str, file_meta) in &self.files {
+            let path = PathBuf::from(path_str);
+            
+            // Verify file still exists and hasn't changed
+            if let Ok(current_metadata) = tokio::fs::metadata(&path).await {
+                let current_modified = current_metadata.modified()?
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_secs();
+                let current_size = current_metadata.len();
+                
+                if current_modified <= file_meta.modified && current_size == file_meta.size {
+                    files.push(discovery::FileValidation {
+                        path,
+                        is_valid_utf8: file_meta.is_valid_utf8,
+                        error: None,
+                    });
+                } else {
+                    // File changed, cache is invalid
+                    return Ok(None);
+                }
+            } else {
+                // File no longer exists, cache is invalid
+                return Ok(None);
+            }
+        }
+        
+        Ok(Some(files))
+    }
+    
+    /// Update discovery cache with new file discovery results
+    /// WHY: Stores discovery results for future fast restarts
+    async fn update_discovery_cache(&mut self, _root_dir: &Path, files: &[discovery::FileValidation]) -> Result<()> {
+        let now = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)?
+            .as_secs();
+        
+        // Clear existing discovery cache but preserve completion status
+        let mut completed_files = HashMap::new();
+        for (path, file_meta) in &self.files {
+            if let Some(completed_at) = file_meta.completed_at {
+                completed_files.insert(path.clone(), completed_at);
+            }
+        }
+        
+        // Clear and rebuild file cache
+        self.files.clear();
+        
+        // Add new discovery results
+        for file in files {
+            if let Ok(metadata) = tokio::fs::metadata(&file.path).await {
+                let modified = metadata.modified()?
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_secs();
+                
+                let path_str = file.path.to_string_lossy().to_string();
+                self.files.insert(
+                    path_str.clone(),
+                    FileMetadata {
+                        size: metadata.len(),
+                        modified,
+                        is_valid_utf8: file.is_valid_utf8,
+                        completed_at: completed_files.get(&path_str).copied(),
+                    }
+                );
+            }
+        }
+        
+        self.discovery_timestamp = Some(now);
+        
+        Ok(())
     }
 }
 
 
 /// Determine if file should be processed based on cache and incremental rules
 /// WHY: Implements core F-9 logic using robust timestamp-based cache
-async fn should_process_file(source_path: &Path, cache: &ProcessingCache, overwrite_all: bool) -> Result<bool> {
-    if overwrite_all {
+async fn should_process_file(source_path: &Path, cache: &ProcessingCache, overwrite_all: bool, overwrite_use_cached_locations: bool) -> Result<bool> {
+    if overwrite_all || overwrite_use_cached_locations {
         return Ok(true);
     }
     
@@ -152,6 +278,7 @@ async fn process_files_parallel(
     file_paths: &[&PathBuf],
     cache: ProcessingCache,
     overwrite_all: bool,
+    overwrite_use_cached_locations: bool,
     fail_fast: bool,
     max_concurrent: usize,
 ) -> Result<(u64, u64, u64, u64, u64)> {
@@ -171,7 +298,7 @@ async fn process_files_parallel(
             let _permit = semaphore.acquire().await.unwrap();
             
             // WHY: Check if file should be processed based on cache and incremental rules
-            let should_process = should_process_file(&path, &cache_clone, overwrite_all).await
+            let should_process = should_process_file(&path, &cache_clone, overwrite_all, overwrite_use_cached_locations).await
                 .unwrap_or(true); // Process on error to be safe
             
             if !should_process {
@@ -251,6 +378,10 @@ struct Args {
     #[arg(long)]
     overwrite_all: bool,
     
+    /// Overwrite aux files but use cached file discovery results
+    #[arg(long)]
+    overwrite_use_cached_locations: bool,
+    
     /// Abort on first error
     #[arg(long)]
     fail_fast: bool,
@@ -295,7 +426,58 @@ async fn main() -> Result<()> {
     };
     
     info!("Starting file discovery in: {}", args.root_dir.display());
-    let discovered_files = discovery::collect_discovered_files(&args.root_dir, discovery_config).await?;
+    
+    // WHY: Load processing cache early to check if discovery cache is valid
+    let cache_path = generate_cache_path(&args.root_dir);
+    let mut cache = ProcessingCache::load(&args.root_dir).await;
+    
+    // WHY: Use cached discovery results if available and valid, otherwise perform fresh discovery
+    // Handle different overwrite modes appropriately
+    let discovered_files = if !args.overwrite_all && !args.overwrite_use_cached_locations {
+        if let Some(cached_files) = cache.get_cached_discovered_files(&args.root_dir).await? {
+            info!("Using cached file discovery results ({} files)", cached_files.len());
+            cached_files
+        } else {
+            info!("Cache invalid or missing, performing fresh file discovery");
+            let fresh_files = discovery::collect_discovered_files(&args.root_dir, discovery_config).await?;
+            
+            // Update cache with fresh discovery results
+            cache.update_discovery_cache(&args.root_dir, &fresh_files).await?;
+            
+            // Save cache immediately after discovery update
+            cache.save(&cache_path).await?;
+            
+            fresh_files
+        }
+    } else if args.overwrite_use_cached_locations {
+        // WHY: Use cached discovery but still allow overwriting aux files
+        if let Some(cached_files) = cache.get_cached_discovered_files(&args.root_dir).await? {
+            info!("Using cached file discovery results with overwrite mode ({} files)", cached_files.len());
+            cached_files
+        } else {
+            info!("Cache invalid for overwrite mode, performing fresh file discovery");
+            let fresh_files = discovery::collect_discovered_files(&args.root_dir, discovery_config).await?;
+            
+            // Update cache with fresh discovery results
+            cache.update_discovery_cache(&args.root_dir, &fresh_files).await?;
+            
+            // Save cache immediately after discovery update
+            cache.save(&cache_path).await?;
+            
+            fresh_files
+        }
+    } else {
+        info!("Overwrite all flag specified, performing fresh file discovery");
+        let fresh_files = discovery::collect_discovered_files(&args.root_dir, discovery_config).await?;
+        
+        // Update cache with fresh discovery results
+        cache.update_discovery_cache(&args.root_dir, &fresh_files).await?;
+        
+        // Save cache immediately after discovery update
+        cache.save(&cache_path).await?;
+        
+        fresh_files
+    };
     
     let valid_files: Vec<_> = discovered_files.iter()
         .filter(|f| f.is_valid_utf8 && f.error.is_none())
@@ -336,10 +518,8 @@ async fn main() -> Result<()> {
     if !valid_files.is_empty() {
         info!("Starting async file reading for {} valid files", valid_files.len());
         
-        // WHY: Load processing cache for incremental processing
-        let cache_path = generate_cache_path(&args.root_dir);
-        let mut cache = ProcessingCache::load(&args.root_dir).await;
-        info!("Loaded processing cache from {}", cache_path.display());
+        // WHY: Processing cache was already loaded during discovery phase
+        info!("Using processing cache from {}", cache_path.display());
         
         // WHY: Log cache status for debugging (sync API usage)
         if let Ok(cache_content) = read_cache(&args.root_dir) {
@@ -356,7 +536,7 @@ async fn main() -> Result<()> {
         // WHY: Use new parallel mmap-based processing for optimal performance
         let start_time = std::time::Instant::now();
         let (total_sentences, total_bytes, processed_files, skipped_files, failed_files) = 
-            process_files_parallel(&valid_paths, cache.clone(), args.overwrite_all, args.fail_fast, max_concurrent).await?;
+            process_files_parallel(&valid_paths, cache.clone(), args.overwrite_all, args.overwrite_use_cached_locations, args.fail_fast, max_concurrent).await?;
         let processing_duration = start_time.elapsed();
         
         // WHY: Update cache for successfully processed files (not skipped ones)
@@ -365,7 +545,7 @@ async fn main() -> Result<()> {
                 if aux_file_exists(path) {
                     // Only mark as completed if the file was actually processed in this run
                     // Check if this file was newly created by checking if it should have been processed
-                    let should_process = should_process_file(path, &cache, args.overwrite_all).await.unwrap_or(false);
+                    let should_process = should_process_file(path, &cache, args.overwrite_all, args.overwrite_use_cached_locations).await.unwrap_or(false);
                     if should_process {
                         cache.mark_completed(path);
                     }
