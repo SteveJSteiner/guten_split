@@ -2,6 +2,7 @@ pub mod discovery;
 pub mod sentence_detector;
 pub mod incremental;
 pub mod parallel_processing;
+pub mod restart_log;
 
 // Re-export main types for convenient access
 pub use sentence_detector::{
@@ -19,4 +20,9 @@ pub use incremental::{
 pub use parallel_processing::{
     ProcessingCache, FileMetadata, FileStats, 
     process_files_parallel, should_process_file
+};
+
+// Re-export restart log for external use
+pub use restart_log::{
+    RestartLog, RestartStats, should_process_file as should_process_file_restart
 };

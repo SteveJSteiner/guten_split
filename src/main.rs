@@ -10,9 +10,11 @@ mod discovery;
 mod sentence_detector;
 mod incremental;
 mod parallel_processing;
+mod restart_log;
 
-use crate::incremental::{generate_cache_path, aux_file_exists, create_complete_aux_file, read_cache};
-use crate::parallel_processing::{ProcessingCache, FileStats, process_files_parallel, should_process_file};
+use crate::incremental::create_complete_aux_file;
+use crate::parallel_processing::FileStats;
+use crate::restart_log::{RestartLog, should_process_file};
 use futures::stream::StreamExt;
 use futures::future::join_all;
 use std::sync::Arc;
@@ -48,28 +50,14 @@ struct RunStats {
 /// WHY: Overlaps file discovery with processing to reduce total pipeline time
 async fn process_with_overlapped_pipeline(
     args: &Args,
-    cache: &mut ProcessingCache,
+    restart_log: &mut RestartLog,
 ) -> Result<(u64, u64, u64, u64, u64, Vec<FileStats>, std::time::Duration)> {
     let pipeline_start = std::time::Instant::now();
     
-    // Check if we can use cached discovery results
+    // Always perform fresh discovery - parallel discovery is fast enough
     let discovery_config = discovery::DiscoveryConfig {
         fail_fast: args.fail_fast,
     };
-    
-    let use_cached_discovery = !args.overwrite_all && !args.overwrite_use_cached_locations;
-    
-    if use_cached_discovery {
-        if let Some(cached_files) = cache.get_cached_discovered_files(&args.root_dir).await? {
-            info!("Using cached file discovery results ({} files)", cached_files.len());
-            return process_discovered_files(args, cache, cached_files, pipeline_start).await;
-        }
-    } else if args.overwrite_use_cached_locations {
-        if let Some(cached_files) = cache.get_cached_discovered_files(&args.root_dir).await? {
-            info!("Using cached file discovery results with overwrite mode ({} files)", cached_files.len());
-            return process_discovered_files(args, cache, cached_files, pipeline_start).await;
-        }
-    }
     
     // Perform overlapped discovery and processing
     info!("Starting overlapped file discovery and processing in: {}", args.root_dir.display());
@@ -102,23 +90,38 @@ async fn process_with_overlapped_pipeline(
                     // Start processing this file immediately
                     let semaphore_clone = semaphore.clone();
                     let detector_clone = detector.clone();
-                    let cache_clone = cache.clone();
                     let path = file_validation.path.clone();
                     let overwrite_all = args.overwrite_all;
                     let overwrite_use_cached_locations = args.overwrite_use_cached_locations;
                     
-                    let task = tokio::spawn(async move {
-                        let _permit = semaphore_clone.acquire().await.unwrap();
-                        process_single_file(
-                            &path,
-                            &detector_clone,
-                            &cache_clone,
-                            overwrite_all,
-                            overwrite_use_cached_locations,
-                        ).await
-                    });
+                    // Check if file should be processed using restart log
+                    let should_process = should_process_file(&path, restart_log, overwrite_all, overwrite_use_cached_locations).await.unwrap_or(true);
                     
-                    processing_queue.push_back(task);
+                    if should_process {
+                        let task = tokio::spawn(async move {
+                            let _permit = semaphore_clone.acquire().await.unwrap();
+                            process_single_file_restart(
+                                &path,
+                                &detector_clone,
+                                overwrite_all,
+                                overwrite_use_cached_locations,
+                            ).await
+                        });
+                        
+                        processing_queue.push_back(task);
+                    } else {
+                        // File is already processed, create a skip result
+                        let skip_result = Ok((0u64, 0u64, 0u64, true, FileStats {
+                            path: path.to_string_lossy().to_string(),
+                            chars_processed: 0,
+                            sentences_detected: 0,
+                            processing_time_ms: 0,
+                            chars_per_sec: 0.0,
+                            status: "skipped".to_string(),
+                            error: None,
+                        }));
+                        processing_results.push(skip_result);
+                    }
                 } else {
                     invalid_files.push(file_validation);
                 }
@@ -166,10 +169,7 @@ async fn process_with_overlapped_pipeline(
         }
     }
     
-    // Update cache with discovery results
-    cache.update_discovery_cache(&args.root_dir, &discovered_files).await?;
-    
-    // Process results and update cache
+    // Process results and update restart log
     let mut total_sentences = 0u64;
     let mut total_bytes = 0u64;
     let mut processed_files = 0u64;
@@ -186,9 +186,9 @@ async fn process_with_overlapped_pipeline(
                     skipped_files += 1;
                 } else {
                     processed_files += files;
-                    // Mark file as completed in cache
+                    // Mark file as completed in restart log
                     let path = std::path::PathBuf::from(&stats.path);
-                    cache.mark_completed(&path);
+                    restart_log.mark_completed(&path);
                 }
                 file_stats.push(stats);
             }
@@ -210,12 +210,11 @@ async fn process_with_overlapped_pipeline(
         }
     }
     
-    // Save cache
-    let cache_path = generate_cache_path(&args.root_dir);
-    if let Err(e) = cache.save(&cache_path).await {
-        info!("Warning: Failed to save processing cache: {}", e);
+    // Save restart log
+    if let Err(e) = restart_log.save(&args.root_dir).await {
+        info!("Warning: Failed to save restart log: {}", e);
     } else {
-        info!("Saved processing cache to {}", cache_path.display());
+        info!("Saved restart log to {}", args.root_dir.join(".seams_restart.json").display());
     }
     
     let processing_duration = pipeline_start.elapsed();
@@ -275,35 +274,16 @@ async fn process_with_overlapped_pipeline(
     Ok((total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats, processing_duration))
 }
 
-/// Process a single file - extracted from parallel_processing for use in overlapped pipeline
-async fn process_single_file(
+/// Process a single file - simplified version without cache dependencies
+async fn process_single_file_restart(
     path: &std::path::Path,
     detector: &crate::sentence_detector::dialog_detector::SentenceDetectorDialog,
-    cache: &ProcessingCache,
-    overwrite_all: bool,
-    overwrite_use_cached_locations: bool,
+    _overwrite_all: bool,
+    _overwrite_use_cached_locations: bool,
 ) -> Result<(u64, u64, u64, bool, FileStats)> {
     let start_time = std::time::Instant::now();
     
-    // Check if file should be processed
-    let should_process = should_process_file(path, cache, overwrite_all, overwrite_use_cached_locations).await
-        .unwrap_or(true);
-    
-    if !should_process {
-        let processing_time = start_time.elapsed();
-        let file_stats = FileStats {
-            path: path.to_string_lossy().to_string(),
-            chars_processed: 0,
-            sentences_detected: 0,
-            processing_time_ms: processing_time.as_millis() as u64,
-            chars_per_sec: 0.0,
-            status: "skipped".to_string(),
-            error: None,
-        };
-        return Ok((0u64, 0u64, 0u64, true, file_stats));
-    }
-    
-    // Process the file
+    // Process the file directly
     let file = std::fs::File::open(path)?;
     let mmap = unsafe { memmap2::MmapOptions::new().map(&file)? };
     let content = std::str::from_utf8(&mmap)
@@ -340,125 +320,7 @@ async fn process_single_file(
     Ok((sentence_count, byte_count, 1u64, false, file_stats))
 }
 
-/// Process already-discovered files (fallback for cached discovery)
-async fn process_discovered_files(
-    args: &Args,
-    cache: &mut ProcessingCache,
-    discovered_files: Vec<discovery::FileValidation>,
-    pipeline_start: std::time::Instant,
-) -> Result<(u64, u64, u64, u64, u64, Vec<FileStats>, std::time::Duration)> {
-    let valid_files: Vec<_> = discovered_files.iter()
-        .filter(|f| f.is_valid_utf8 && f.error.is_none())
-        .collect();
-    
-    let invalid_files: Vec<_> = discovered_files.iter()
-        .filter(|f| !f.is_valid_utf8 || f.error.is_some())
-        .collect();
-    
-    info!("File discovery completed: {} total files found", discovered_files.len());
-    info!("Valid UTF-8 files: {}", valid_files.len());
-    
-    if !invalid_files.is_empty() {
-        info!("Files with issues: {}", invalid_files.len());
-        for file in &invalid_files {
-            if let Some(ref error) = file.error {
-                info!("Issue with {}: {}", file.path.display(), error);
-            } else if !file.is_valid_utf8 {
-                info!("UTF-8 validation failed: {}", file.path.display());
-            }
-        }
-    }
-    
-    println!("seams v{} - File discovery complete", env!("CARGO_PKG_VERSION"));
-    println!("Found {} files matching pattern *-0.txt", discovered_files.len());
-    println!("Valid files: {}, Files with issues: {}", valid_files.len(), invalid_files.len());
-    
-    // WHY: Demonstrate public API usage for external developers (minimal example)
-    if std::env::var("SEAMS_DEBUG_API").is_ok() && !valid_files.is_empty() {
-        let example_path = &valid_files[0].path;
-        let demo_content = "0\tExample usage of public API.\t(1,1,1,27)\n";
-        if create_complete_aux_file(example_path, demo_content).is_ok() {
-            info!("Created demo aux file using public API for {}", example_path.display());
-        }
-    }
-    
-    // Process valid files
-    let (total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats, _processing_duration) = 
-        if !valid_files.is_empty() {
-            info!("Starting async file reading for {} valid files", valid_files.len());
-            
-            let cache_path = generate_cache_path(&args.root_dir);
-            info!("Using processing cache from {}", cache_path.display());
-            
-            // WHY: Log cache status for debugging (sync API usage)
-            if let Ok(cache_content) = read_cache(&args.root_dir) {
-                let cache_size = cache_content.len();
-                info!("Cache file size: {} bytes", cache_size);
-            }
-            
-            // WHY: Use bounded concurrency to prevent resource exhaustion
-            let max_concurrent = num_cpus_get().min(8);
-            info!("Processing files with concurrency limit: {}", max_concurrent);
-            
-            let valid_paths: Vec<_> = valid_files.iter().map(|f| &f.path).collect();
-            
-            // WHY: Use existing parallel processing for cached discovery
-            let start_time = std::time::Instant::now();
-            let (total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats) = 
-                process_files_parallel(&valid_paths, cache.clone(), args.overwrite_all, args.overwrite_use_cached_locations, args.fail_fast, max_concurrent).await?;
-            let processing_duration = start_time.elapsed();
-            
-            // WHY: Update cache for successfully processed files
-            if processed_files > 0 {
-                for path in &valid_paths {
-                    if aux_file_exists(path) {
-                        let should_process = should_process_file(path, cache, args.overwrite_all, args.overwrite_use_cached_locations).await.unwrap_or(false);
-                        if should_process {
-                            cache.mark_completed(path);
-                        }
-                    }
-                }
-            }
-            
-            println!("File processing complete:");
-            println!("  Successfully processed: {processed_files} files");
-            if skipped_files > 0 {
-                println!("  Skipped (complete aux files): {skipped_files} files");
-            }
-            if failed_files > 0 {
-                println!("  Failed to process: {failed_files} files");
-            }
-            println!("  Total bytes processed: {total_bytes}");
-            println!("  Total sentences detected: {total_sentences}");
-            println!("  Total time spent: {:.2}s", processing_duration.as_secs_f64());
-            
-            // WHY: Show performance metrics
-            if total_bytes > 0 && processing_duration.as_secs_f64() > 0.0 {
-                let throughput_chars_per_sec = total_bytes as f64 / processing_duration.as_secs_f64();
-                let throughput_mb_per_sec = throughput_chars_per_sec / 1_000_000.0;
-                println!("  Throughput: {throughput_chars_per_sec:.0} chars/sec ({throughput_mb_per_sec:.2} MB/s)");
-            }
-            
-            info!("Parallel processing completed: {} processed, {} skipped, {} failed, {} sentences detected", 
-                  processed_files, skipped_files, failed_files, total_sentences);
-                  
-            // WHY: Save cache after processing
-            let cache_path = generate_cache_path(&args.root_dir);
-            if let Err(e) = cache.save(&cache_path).await {
-                info!("Warning: Failed to save processing cache: {}", e);
-            } else {
-                info!("Saved processing cache to {}", cache_path.display());
-            }
-            
-            (total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats, processing_duration)
-        } else {
-            // WHY: No valid files found, return empty stats
-            (0, 0, 0, 0, 0, Vec::new(), std::time::Duration::from_millis(0))
-        };
-    
-    let total_duration = pipeline_start.elapsed();
-    Ok((total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats, total_duration))
-}
+// Cache-based discovery logic removed - using fresh parallel discovery only
 
 // Functions moved to parallel_processing module
 
@@ -516,13 +378,12 @@ async fn main() -> Result<()> {
     
     info!("Project setup validation completed successfully");
     
-    // WHY: Load processing cache early to check if discovery cache is valid
-    let _cache_path = generate_cache_path(&args.root_dir);
-    let mut cache = ProcessingCache::load(&args.root_dir).await;
+    // WHY: Load restart log to track completed files
+    let mut restart_log = RestartLog::load(&args.root_dir).await;
     
     // WHY: Use overlapped discovery and processing pipeline for optimal performance
     let (total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats, processing_duration) = 
-        process_with_overlapped_pipeline(&args, &mut cache).await?;
+        process_with_overlapped_pipeline(&args, &mut restart_log).await?;
     
     // WHY: Generate run statistics per PRD F-8 requirement
     let overall_chars_per_sec = if processing_duration.as_secs_f64() > 0.0 {
