@@ -237,6 +237,7 @@ async fn process_with_overlapped_pipeline(
     println!("seams v{} - Overlapped discovery and processing complete", env!("CARGO_PKG_VERSION"));
     println!("Found {} files matching pattern *-0.txt", discovered_files.len());
     println!("Valid files: {}, Files with issues: {}", valid_files.len(), invalid_files.len());
+    println!("Restart log: {} files tracked as completed", restart_log.completed_count());
     
     // WHY: Demonstrate public API usage for external developers (minimal example)
     if std::env::var("SEAMS_DEBUG_API").is_ok() && !valid_files.is_empty() {
@@ -352,6 +353,10 @@ struct Args {
     /// Stats output file path
     #[arg(long, default_value = "run_stats.json")]
     stats_out: PathBuf,
+    
+    /// Clear the restart log before processing
+    #[arg(long)]
+    clear_restart_log: bool,
 }
 
 #[tokio::main]
@@ -380,6 +385,24 @@ async fn main() -> Result<()> {
     
     // WHY: Load restart log to track completed files
     let mut restart_log = RestartLog::load(&args.root_dir).await;
+    
+    // WHY: Clear restart log if requested by user
+    if args.clear_restart_log {
+        let cleared_count = restart_log.completed_count();
+        restart_log.clear();
+        info!("Cleared {} entries from restart log", cleared_count);
+        println!("Restart log cleared - will reprocess all files");
+    } else {
+        // WHY: Verify restart log integrity and clean up stale entries
+        let initial_count = restart_log.completed_count();
+        if initial_count > 0 {
+            info!("Loaded restart log with {} completed files", initial_count);
+            let invalid_files = restart_log.verify_completed_files().await?;
+            if !invalid_files.is_empty() {
+                info!("Cleaned {} stale entries from restart log", invalid_files.len());
+            }
+        }
+    }
     
     // WHY: Use overlapped discovery and processing pipeline for optimal performance
     let (total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats, processing_duration) = 

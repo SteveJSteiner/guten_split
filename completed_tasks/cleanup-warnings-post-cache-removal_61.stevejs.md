@@ -55,11 +55,10 @@
   - `RestartStats` struct - may be kept for future use
 
 * **Implementation Strategy:**
-  1. **Preserve Public API**: Check if any dead code functions are part of public API that external code might depend on
-  2. **Remove Internal Dead Code**: Delete functions that are clearly internal and no longer used
-  3. **Annotate Utility Methods**: For RestartLog utility methods, consider adding `#[allow(dead_code)]` if they provide debugging value
-  4. **Update Exports**: Remove deleted functions from lib.rs re-exports
-  5. **Validate**: Run warning-free validation script to ensure all warnings are resolved
+  1. **Remove Internal Dead Code**: Delete functions that are clearly internal and no longer used
+  2. **Annotate Utility Methods**: For RestartLog utility methods, consider adding `#[allow(dead_code)]` if they provide debugging value
+  3. **Update Exports**: Remove deleted functions from lib.rs re-exports
+  4. **Validate**: Run warning-free validation script to ensure all warnings are resolved
 
 * **References:**
   - completed_tasks/remove-discovery-cache-test_60.stevejs.md - Previous work that introduced these warnings

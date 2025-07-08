@@ -4,7 +4,7 @@
 #![cfg(feature = "test-helpers")]
 
 use std::process::Command;
-use seams::incremental::{aux_file_exists, create_complete_aux_file, generate_aux_file_path};
+use seams::incremental::{create_complete_aux_file, generate_aux_file_path};
 
 mod integration;
 use integration::TestFixture;
@@ -28,7 +28,7 @@ async fn test_skip_complete_aux_files() {
     
     // Verify aux file and restart log were created using public API
     
-    assert!(aux_file_exists(&source_path), "Aux file should exist after first run");
+    assert!(generate_aux_file_path(&source_path).exists(), "Aux file should exist after first run");
     let restart_log_path = fixture.root_path.join(".seams_restart.json");
     assert!(restart_log_path.exists(), "Restart log should exist after first run");
     
@@ -70,7 +70,7 @@ async fn test_process_aux_files_missing_from_cache() {
     create_complete_aux_file(&source_path, aux_content).expect("Failed to create aux file");
     
     // Verify aux file exists but no restart log
-    assert!(aux_file_exists(&source_path), "Aux file should exist");
+    assert!(generate_aux_file_path(&source_path).exists(), "Aux file should exist");
     let restart_log_path = fixture.root_path.join(".seams_restart.json");
     assert!(!restart_log_path.exists(), "Restart log should not exist initially");
     
@@ -119,7 +119,7 @@ async fn test_overwrite_all_flag() {
     assert!(output1.status.success(), "First run failed: {}", String::from_utf8_lossy(&output1.stderr));
     
     // Verify aux file was created
-    assert!(aux_file_exists(&source_path), "Aux file should exist after first run");
+    assert!(generate_aux_file_path(&source_path).exists(), "Aux file should exist after first run");
     
     // Second run with --overwrite-all - should process the file again
     let output2 = Command::new("cargo")
@@ -152,14 +152,14 @@ async fn test_deleted_aux_files_regenerated() {
         .expect("Failed to run first command");
     
     assert!(output1.status.success(), "First run failed: {}", String::from_utf8_lossy(&output1.stderr));
-    assert!(aux_file_exists(&source_path), "Aux file should exist after first run");
+    assert!(generate_aux_file_path(&source_path).exists(), "Aux file should exist after first run");
     let restart_log_path = fixture.root_path.join(".seams_restart.json");
     assert!(restart_log_path.exists(), "Restart log should exist after first run");
     
     // Delete the aux file but keep the cache
     let aux_path = fixture.generate_aux_file_path(&source_path);
     std::fs::remove_file(&aux_path).expect("Failed to delete aux file");
-    assert!(!aux_file_exists(&source_path), "Aux file should be deleted");
+    assert!(!generate_aux_file_path(&source_path).exists(), "Aux file should be deleted");
     
     // Second run - should detect missing aux file and regenerate it
     let output2 = Command::new("cargo")
@@ -174,7 +174,7 @@ async fn test_deleted_aux_files_regenerated() {
            "Should report 1 processed file when aux file is missing, stdout: {stdout2}");
     
     // Verify aux file was regenerated
-    assert!(aux_file_exists(&source_path), "Aux file should be regenerated");
+    assert!(generate_aux_file_path(&source_path).exists(), "Aux file should be regenerated");
     let aux_content = std::fs::read_to_string(generate_aux_file_path(&source_path)).expect("Should be able to read regenerated aux file");
     assert!(!aux_content.is_empty(), "Regenerated aux file should have content");
     assert!(aux_content.ends_with('\n'), "Regenerated aux file should end with newline");
@@ -203,9 +203,9 @@ async fn test_mixed_incremental_states() {
     assert!(output1.status.success(), "First run failed: {}", String::from_utf8_lossy(&output1.stderr));
     
     // Verify all files were processed and cache was created
-    assert!(aux_file_exists(&path1), "File1 aux should exist after first run");
-    assert!(aux_file_exists(&path2), "File2 aux should exist after first run");
-    assert!(aux_file_exists(&path3), "File3 aux should exist after first run");
+    assert!(generate_aux_file_path(&path1).exists(), "File1 aux should exist after first run");
+    assert!(generate_aux_file_path(&path2).exists(), "File2 aux should exist after first run");
+    assert!(generate_aux_file_path(&path3).exists(), "File3 aux should exist after first run");
     let restart_log_path = fixture.root_path.join(".seams_restart.json");
     assert!(restart_log_path.exists(), "Restart log should exist after first run");
     
@@ -228,9 +228,9 @@ async fn test_mixed_incremental_states() {
            "Should report 2 skipped files (file1 and file2), stdout: {stdout2}");
     
     // Verify all aux files exist 
-    assert!(aux_file_exists(&path1), "File1 aux should still exist");
-    assert!(aux_file_exists(&path2), "File2 aux should still exist");
-    assert!(aux_file_exists(&path3), "File3 aux should be regenerated");
+    assert!(generate_aux_file_path(&path1).exists(), "File1 aux should still exist");
+    assert!(generate_aux_file_path(&path2).exists(), "File2 aux should still exist");
+    assert!(generate_aux_file_path(&path3).exists(), "File3 aux should be regenerated");
     
     let aux1 = std::fs::read_to_string(generate_aux_file_path(&path1)).expect("Should read file1 aux");
     let aux2 = std::fs::read_to_string(generate_aux_file_path(&path2)).expect("Should read file2 aux");

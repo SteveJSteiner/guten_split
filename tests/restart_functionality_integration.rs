@@ -251,10 +251,11 @@ async fn test_restart_log_concurrent_operations() {
         assert!(loaded_log.is_completed(path), "File {} should be completed", path.display());
     }
     
-    // Test bulk operations
+    // Test bulk operations (manually mark each completed)
     let mut bulk_log = RestartLog::load(root_path).await;
-    let path_refs: Vec<_> = file_paths.iter().map(|p| p.as_path()).collect();
-    bulk_log.append_completed_files(&path_refs).await.unwrap();
+    for path in &file_paths {
+        bulk_log.mark_completed(path);
+    }
     
     assert_eq!(bulk_log.completed_count(), 10);
 }

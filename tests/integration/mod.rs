@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::fs;
 use tempfile::TempDir;
-use seams::incremental::{generate_aux_file_path, generate_cache_path};
+use seams::incremental::generate_aux_file_path;
 
 
 /// Test fixture helper for creating temporary directories with Gutenberg-style files
@@ -53,17 +53,5 @@ impl TestFixture {
         aux_path
     }
     
-    /// Generate cache file path for the test fixture root
-    pub fn cache_path(&self) -> PathBuf {
-        generate_cache_path(&self.root_path)
-    }
-    
-    /// Create a cache file with specific content for testing
-    #[allow(dead_code)]
-    pub fn create_cache(&self, content: &str) -> PathBuf {
-        let cache_path = self.cache_path();
-        fs::write(&cache_path, content).expect("Failed to write cache file");
-        cache_path
-    }
 }
 

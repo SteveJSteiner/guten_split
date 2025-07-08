@@ -61,14 +61,6 @@ impl RestartLog {
             .as_secs();
     }
     
-    /// Get all completed files
-    /// WHY: Useful for debugging and status reporting
-    pub fn get_completed_files(&self) -> Vec<PathBuf> {
-        self.completed_files.iter()
-            .map(PathBuf::from)
-            .collect()
-    }
-    
     /// Get count of completed files
     /// WHY: Quick status check without allocating full paths
     pub fn completed_count(&self) -> usize {
@@ -76,7 +68,7 @@ impl RestartLog {
     }
     
     /// Clear all completed files
-    /// WHY: Allows full reprocessing when needed
+    /// WHY: Allows full reprocessing when needed via --clear-restart-log flag
     pub fn clear(&mut self) {
         self.completed_files.clear();
         self.last_updated = std::time::SystemTime::now()
@@ -89,15 +81,6 @@ impl RestartLog {
     /// WHY: Centralized path management
     fn get_log_path(root_dir: &Path) -> PathBuf {
         root_dir.join(".seams_restart.json")
-    }
-    
-    /// Batch append multiple completed files
-    /// WHY: Efficient for processing multiple files at once
-    pub async fn append_completed_files(&mut self, files: &[&Path]) -> Result<()> {
-        for file in files {
-            self.mark_completed(file);
-        }
-        Ok(())
     }
     
     /// Verify completed files still exist and have aux files
@@ -131,21 +114,6 @@ impl RestartLog {
         Ok(invalid_files)
     }
     
-    /// Get restart log statistics
-    /// WHY: Provides useful information for debugging and monitoring
-    pub fn get_stats(&self) -> RestartStats {
-        RestartStats {
-            completed_files: self.completed_files.len(),
-            last_updated: self.last_updated,
-        }
-    }
-}
-
-/// Statistics about the restart log
-#[derive(Debug, Clone)]
-pub struct RestartStats {
-    pub completed_files: usize,
-    pub last_updated: u64,
 }
 
 /// Check if a file should be processed based on restart log and overwrite flags

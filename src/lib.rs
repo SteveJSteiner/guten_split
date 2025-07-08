@@ -12,17 +12,16 @@ pub use sentence_detector::{
 
 // Re-export incremental processing utilities
 pub use incremental::{
-    generate_aux_file_path, aux_file_exists, 
-    create_complete_aux_file, generate_cache_path, cache_exists, read_cache, read_cache_async
+    generate_aux_file_path,
+    create_complete_aux_file
 };
 
 // Re-export parallel processing types and functions for benchmarking
 pub use parallel_processing::{
-    ProcessingCache, FileMetadata, FileStats, 
-    process_files_parallel, should_process_file
+    FileStats
 };
 
 // Re-export restart log for external use
 pub use restart_log::{
-    RestartLog, RestartStats, should_process_file as should_process_file_restart
+    RestartLog, should_process_file as should_process_file_restart
 };

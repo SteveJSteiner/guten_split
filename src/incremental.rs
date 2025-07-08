@@ -16,13 +16,6 @@ pub fn generate_aux_file_path(source_path: &Path) -> PathBuf {
     aux_path
 }
 
-/// Check if auxiliary file exists for given source file
-/// WHY: Core utility for incremental processing - check if work is already done
-pub fn aux_file_exists<P: AsRef<Path>>(source_path: P) -> bool {
-    let aux_path = generate_aux_file_path(source_path.as_ref());
-    aux_path.exists()
-}
-
 
 /// Create a complete auxiliary file (with trailing newline) for given source
 /// WHY: Core utility for writing properly formatted aux files per F-7 spec
@@ -45,34 +38,3 @@ pub fn create_complete_aux_file<P: AsRef<Path>>(source_path: P, content: &str) -
     Ok(aux_path)
 }
 
-/// Generate cache file path for given root directory
-/// WHY: Standard cache location for incremental processing state
-pub fn generate_cache_path<P: AsRef<Path>>(root_dir: P) -> PathBuf {
-    root_dir.as_ref().join(".seams_cache.json")
-}
-
-/// Check if cache file exists in given directory
-/// WHY: Core utility for incremental processing - check if cache is available
-pub fn cache_exists<P: AsRef<Path>>(root_dir: P) -> bool {
-    generate_cache_path(root_dir).exists()
-}
-
-/// Read cache file content from given directory
-/// WHY: Core utility for loading incremental processing state
-/// 
-/// # Example
-/// ```no_run
-/// use seams::incremental::read_cache;
-/// let cache_content = read_cache("/path/to/gutenberg/root").expect("Failed to read cache");
-/// ```
-pub fn read_cache<P: AsRef<Path>>(root_dir: P) -> Result<String, io::Error> {
-    let cache_path = generate_cache_path(root_dir);
-    fs::read_to_string(cache_path)
-}
-
-/// Read cache file content from given directory (async version)
-/// WHY: Async utility for loading incremental processing state without blocking
-pub async fn read_cache_async<P: AsRef<Path>>(root_dir: P) -> Result<String, io::Error> {
-    let cache_path = generate_cache_path(root_dir);
-    tokio::fs::read_to_string(cache_path).await
-}
