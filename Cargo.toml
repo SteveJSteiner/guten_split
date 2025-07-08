@@ -45,3 +45,7 @@ test-helpers = []
 name = "file_by_file_bench"
 harness = false
 
+[[bench]]
+name = "parallel_cli_bench"
+harness = false
+
