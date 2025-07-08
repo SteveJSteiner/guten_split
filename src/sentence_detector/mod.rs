@@ -36,10 +36,3 @@ impl<'a> DetectedSentenceBorrowed<'a> {
 }
 
 
-/// Legacy struct for backward compatibility - will be deprecated
-#[derive(Debug, Clone)]
-pub struct DetectedSentence {
-    pub index: usize,
-    pub normalized_content: String,
-    pub span: Span,
-}

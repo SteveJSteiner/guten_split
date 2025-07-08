@@ -12,7 +12,6 @@ use memmap2::MmapOptions;
 use num_cpus::get as num_cpus_get;
 
 mod discovery;
-mod reader;
 mod sentence_detector;
 mod incremental;
 
@@ -355,8 +354,10 @@ async fn main() -> Result<()> {
         let valid_paths: Vec<_> = valid_files.iter().map(|f| &f.path).collect();
         
         // WHY: Use new parallel mmap-based processing for optimal performance
+        let start_time = std::time::Instant::now();
         let (total_sentences, total_bytes, processed_files, skipped_files, failed_files) = 
             process_files_parallel(&valid_paths, cache.clone(), args.overwrite_all, args.fail_fast, max_concurrent).await?;
+        let processing_duration = start_time.elapsed();
         
         // WHY: Update cache for successfully processed files (not skipped ones)
         if processed_files > 0 {
@@ -382,6 +383,14 @@ async fn main() -> Result<()> {
         }
         println!("  Total bytes processed: {total_bytes}");
         println!("  Total sentences detected: {total_sentences}");
+        println!("  Total time spent: {:.2}s", processing_duration.as_secs_f64());
+        
+        // WHY: Show performance metrics - Total characters / Total time spent
+        if total_bytes > 0 && processing_duration.as_secs_f64() > 0.0 {
+            let throughput_chars_per_sec = total_bytes as f64 / processing_duration.as_secs_f64();
+            let throughput_mb_per_sec = throughput_chars_per_sec / 1_000_000.0;
+            println!("  Throughput: {throughput_chars_per_sec:.0} chars/sec ({throughput_mb_per_sec:.2} MB/s)");
+        }
         
         info!("Parallel mmap processing completed: {} processed, {} skipped, {} failed, {} sentences detected", 
               processed_files, skipped_files, failed_files, total_sentences);

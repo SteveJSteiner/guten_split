@@ -108,13 +108,13 @@ fn detect_sentences_dialog_state_machine(text: &str) -> Result<Vec<String>> {
     let detector = SentenceDetectorDialog::new()
         .map_err(|e| anyhow::anyhow!("Failed to create sentence detector: {}", e))?;
     
-    let sentences = detector.detect_sentences(text)
+    let sentences = detector.detect_sentences_borrowed(text)
         .map_err(|e| anyhow::anyhow!("Failed to detect sentences: {}", e))?;
     
-    // Convert DetectedSentence to strings
+    // Convert DetectedSentenceBorrowed to strings
     let sentence_strings: Vec<String> = sentences
         .into_iter()
-        .map(|s| s.normalized_content)
+        .map(|s| s.normalize())
         .collect();
     
     Ok(sentence_strings)

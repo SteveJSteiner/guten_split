@@ -56,7 +56,7 @@ fn bench_detector_usage_patterns(c: &mut Criterion) {
         b.iter(|| {
             for text in &sample_texts {
                 let detector = SentenceDetectorDialog::new().unwrap();
-                let sentences = detector.detect_sentences(black_box(text)).unwrap();
+                let sentences = detector.detect_sentences_borrowed(black_box(text)).unwrap();
                 black_box(sentences);
             }
         })
@@ -67,7 +67,7 @@ fn bench_detector_usage_patterns(c: &mut Criterion) {
         let detector = SentenceDetectorDialog::new().unwrap();
         b.iter(|| {
             for text in &sample_texts {
-                let sentences = detector.detect_sentences(black_box(text)).unwrap();
+                let sentences = detector.detect_sentences_borrowed(black_box(text)).unwrap();
                 black_box(sentences);
             }
         })

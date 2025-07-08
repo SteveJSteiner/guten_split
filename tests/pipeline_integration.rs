@@ -16,13 +16,13 @@ async fn test_sentence_detection_simple() {
     let detector = get_detector();
     
     let text = "Hello world. This is a test. How are you?";
-    let sentences = detector.detect_sentences(text)
+    let sentences = detector.detect_sentences_borrowed(text)
         .expect("Sentence detection should succeed");
     
     assert_eq!(sentences.len(), 3);
-    assert_eq!(sentences[0].normalized_content, "Hello world.");
-    assert_eq!(sentences[1].normalized_content, "This is a test.");
-    assert_eq!(sentences[2].normalized_content, "How are you?");
+    assert_eq!(sentences[0].normalize(), "Hello world.");
+    assert_eq!(sentences[1].normalize(), "This is a test.");
+    assert_eq!(sentences[2].normalize(), "How are you?");
 }
 
 /// Test sentence detection with abbreviations and punctuation
@@ -31,19 +31,19 @@ async fn test_sentence_detection_punctuation() {
     let detector = get_detector();
     
     let text = "Dr. Smith went to the U.S.A. yesterday. He said \"Hello there!\" to Mr. Jones.";
-    let sentences = detector.detect_sentences(text)
+    let sentences = detector.detect_sentences_borrowed(text)
         .expect("Sentence detection should succeed");
     
     assert_eq!(sentences.len(), 2);
-    assert!(sentences[0].normalized_content.contains("Dr. Smith"));
-    assert!(sentences[0].normalized_content.contains("U.S.A."));
-    assert!(sentences[1].normalized_content.contains("Hello there!"));
+    assert!(sentences[0].normalize().contains("Dr. Smith"));
+    assert!(sentences[0].normalize().contains("U.S.A."));
+    assert!(sentences[1].normalize().contains("Hello there!"));
 }
 
 /// Test file discovery and processing with minimal setup
 #[tokio::test]
 async fn test_file_discovery_and_processing() {
-    use seams::{discovery, reader};
+    use seams::{discovery};
     
     let temp_dir = TempDir::new().expect("Failed to create temp directory");
     let root_path = temp_dir.path();
@@ -64,9 +64,9 @@ async fn test_file_discovery_and_processing() {
     let detector = get_detector();
     
     for file_path in files {
-        let content = reader::read_file_async(&file_path).await
+        let content = std::fs::read_to_string(&file_path)
             .expect("File reading should succeed");
-        let sentences = detector.detect_sentences(&content)
+        let sentences = detector.detect_sentences_borrowed(&content)
             .expect("Sentence detection should succeed");
         
         assert!(!sentences.is_empty(), "File {file_path:?} should produce sentences");

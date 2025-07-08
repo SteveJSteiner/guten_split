@@ -4,7 +4,7 @@
 #[cfg(feature = "test-helpers")]
 #[test]
 fn test_public_api_integration() {
-    use seams::incremental::{aux_file_exists, read_aux_file, create_complete_aux_file, cache_exists, read_cache};
+    use seams::incremental::{aux_file_exists, create_complete_aux_file, cache_exists, read_cache, generate_aux_file_path};
     use tempfile::TempDir;
     use std::fs;
     
@@ -23,7 +23,7 @@ fn test_public_api_integration() {
     assert!(aux_file_exists(&source_file));
     assert!(aux_path.exists());
     
-    let read_content = read_aux_file(&source_file).expect("Failed to read aux file");
+    let read_content = std::fs::read_to_string(generate_aux_file_path(&source_file)).expect("Failed to read aux file");
     assert_eq!(read_content, aux_content);
     
     // Test cache operations using public API directly

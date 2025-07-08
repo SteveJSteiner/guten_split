@@ -21,7 +21,7 @@ Span	(start_line, start_col, end_line, end_col)—all one-based, columns measure
 	•	Overwrite a partial aux file.
 	•	Produce per-run statistics and aggregate them in run_stats.json.
 	•	Provide a --fail_fast switch to abort on first error; otherwise continue and log.
-	•	Offer two I/O back-ends: standard async buffered I/O and memory-mapped (mmap) comparison mode for benchmarking.
+	•	Use memory-mapped I/O for high-performance file processing with parallel execution.
 
 3.2 Out of Scope (Now)
 	•	Distributed processing across hosts.
@@ -31,10 +31,10 @@ Span	(start_line, start_col, end_line, end_col)—all one-based, columns measure
 4 Functional Requirements
 
 ID	Requirement
-F-1	CLI accepts: root_dir, --overwrite_all, --fail_fast, --use_mmap, --no_progress, --stats_out.
+F-1	CLI accepts: root_dir, --overwrite_all, --fail_fast, --no_progress, --stats_out.
 F-2	Recursively locate and stream-process every *-0.txt.
 F-3	At startup, compile sentence-boundary patterns into a high-performance DFA stored in memory for all worker tasks.
-F-4	Read each file with async buffered reader (Tokio) or memory-map (when --use_mmap).
+F-4	Read each file with memory-mapped I/O for optimal performance with parallel processing.
 F-5	Detect sentence boundaries with the DFA, producing: index<TAB>sentence<TAB>(start_line,start_col,end_line,end_col) per line.
 F-6	Normalise sentences by removing hard line breaks; treat \r\n as single break; preserve all other bytes.
 F-7	Write results via async buffered writer to <path>_seams.txt.

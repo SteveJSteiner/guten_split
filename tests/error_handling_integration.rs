@@ -1,5 +1,5 @@
 // use std::path::PathBuf;
-use seams::{discovery, reader, sentence_detector};
+use seams::{discovery, sentence_detector};
 
 #[path = "integration/mod.rs"]
 mod test_utils;
@@ -62,14 +62,14 @@ async fn test_pipeline_empty_files() {
     assert_eq!(files.len(), 1);
     
     // Reader should handle empty file
-    let content = reader::read_file_async(&file_path).await
+    let content = tokio::fs::read_to_string(&file_path).await
         .expect("Reading empty file should succeed");
     assert_eq!(content, "");
     
     // Sentence detector should handle empty content
     let detector = sentence_detector::dialog_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
-    let sentences = detector.detect_sentences(&content)
+    let sentences = detector.detect_sentences_borrowed(&content)
         .expect("Sentence detection on empty content should succeed");
     
     assert_eq!(sentences.len(), 0, "Empty file should produce no sentences");
@@ -86,12 +86,12 @@ async fn test_pipeline_whitespace_only() {
         .expect("Discovery should succeed");
     assert_eq!(files.len(), 1);
     
-    let content = reader::read_file_async(&file_path).await
+    let content = tokio::fs::read_to_string(&file_path).await
         .expect("Reading whitespace file should succeed");
     
     let detector = sentence_detector::dialog_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
-    let sentences = detector.detect_sentences(&content)
+    let sentences = detector.detect_sentences_borrowed(&content)
         .expect("Sentence detection on whitespace should succeed");
     
     assert_eq!(sentences.len(), 0, "Whitespace-only file should produce no sentences");
@@ -108,12 +108,12 @@ async fn test_pipeline_punctuation_only() {
         .expect("Discovery should succeed");
     assert_eq!(files.len(), 1);
     
-    let content = reader::read_file_async(&file_path).await
+    let content = tokio::fs::read_to_string(&file_path).await
         .expect("Reading punctuation file should succeed");
     
     let detector = sentence_detector::dialog_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
-    let sentences = detector.detect_sentences(&content)
+    let sentences = detector.detect_sentences_borrowed(&content)
         .expect("Sentence detection on punctuation should succeed");
     
     // Should handle gracefully - might produce sentences depending on FST rules
@@ -161,9 +161,9 @@ async fn test_pipeline_nested_directories() {
         .expect("Detector creation should succeed");
     
     for file_path in files {
-        let content = reader::read_file_async(&file_path).await
+        let content = tokio::fs::read_to_string(&file_path).await
             .expect("File reading should succeed");
-        let sentences = detector.detect_sentences(&content)
+        let sentences = detector.detect_sentences_borrowed(&content)
             .expect("Sentence detection should succeed");
         
         assert_eq!(sentences.len(), 1, "Each test file should have one sentence");
@@ -185,14 +185,14 @@ async fn test_pipeline_long_paths() {
         .expect("Discovery should handle long paths");
     assert_eq!(files.len(), 1);
     
-    let content = reader::read_file_async(&files[0]).await
+    let content = tokio::fs::read_to_string(&files[0]).await
         .expect("Should read file with long path");
     
     let detector = sentence_detector::dialog_detector::SentenceDetectorDialog::new()
         .expect("Detector creation should succeed");
-    let sentences = detector.detect_sentences(&content)
+    let sentences = detector.detect_sentences_borrowed(&content)
         .expect("Sentence detection should succeed");
     
     assert_eq!(sentences.len(), 1);
-    assert_eq!(sentences[0].normalized_content, "Content in deeply nested file.");
+    assert_eq!(sentences[0].normalize(), "Content in deeply nested file.");
 }

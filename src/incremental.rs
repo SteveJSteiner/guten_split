@@ -23,18 +23,6 @@ pub fn aux_file_exists<P: AsRef<Path>>(source_path: P) -> bool {
     aux_path.exists()
 }
 
-/// Read auxiliary file content for given source file
-/// WHY: Core utility for accessing previously processed sentence data
-/// 
-/// # Example
-/// ```no_run
-/// use seams::incremental::read_aux_file;
-/// let content = read_aux_file("path/to/book-0.txt").expect("Failed to read aux file");
-/// ```
-pub fn read_aux_file<P: AsRef<Path>>(source_path: P) -> Result<String, io::Error> {
-    let aux_path = generate_aux_file_path(source_path.as_ref());
-    fs::read_to_string(aux_path)
-}
 
 /// Create a complete auxiliary file (with trailing newline) for given source
 /// WHY: Core utility for writing properly formatted aux files per F-7 spec

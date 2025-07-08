@@ -39,10 +39,6 @@ dotenvy = "0.15"
 default = []
 test-helpers = []
 
-[[bench]]
-name = "reader_bench"
-harness = false
-
 
 
 [[bench]]

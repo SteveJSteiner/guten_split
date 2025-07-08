@@ -2,7 +2,7 @@
 // WHY: Public API functions must be tested to ensure they work correctly for external users
 
 use seams::incremental::{
-    generate_aux_file_path, aux_file_exists, read_aux_file, create_complete_aux_file,
+    generate_aux_file_path, aux_file_exists, create_complete_aux_file,
     generate_cache_path, cache_exists, read_cache, read_cache_async
 };
 use tempfile::TempDir;
@@ -30,7 +30,7 @@ fn test_aux_file_operations() {
     assert!(aux_file_exists(&source_file), "Aux file should exist after creation");
     
     // Read aux file content
-    let read_content = read_aux_file(&source_file)
+    let read_content = std::fs::read_to_string(&aux_path)
         .expect("Failed to read aux file");
     assert_eq!(read_content, aux_content, "Read content should match written content");
     
@@ -38,7 +38,7 @@ fn test_aux_file_operations() {
     let content_without_newline = "0\tTest.\t(1,1,1,5)";
     create_complete_aux_file(&source_file, content_without_newline)
         .expect("Failed to create aux file without newline");
-    let read_content_with_newline = read_aux_file(&source_file)
+    let read_content_with_newline = std::fs::read_to_string(&aux_path)
         .expect("Failed to read aux file");
     assert!(read_content_with_newline.ends_with('\n'), "Content should have trailing newline");
     assert_eq!(read_content_with_newline, format!("{content_without_newline}\n"));
@@ -98,7 +98,8 @@ fn test_error_handling() {
     let non_existent_source = temp_dir.path().join("does-not-exist-0.txt");
     
     // Reading non-existent aux file should fail gracefully
-    let read_result = read_aux_file(&non_existent_source);
+    let aux_path = generate_aux_file_path(&non_existent_source);
+    let read_result = std::fs::read_to_string(&aux_path);
     assert!(read_result.is_err(), "Reading non-existent aux file should fail");
     
     // aux_file_exists should return false for non-existent files
@@ -111,7 +112,7 @@ fn test_error_handling() {
     
     // Now the aux file should exist and be readable
     assert!(aux_file_exists(&non_existent_source), "Aux file should exist after creation");
-    let read_content = read_aux_file(&non_existent_source)
+    let read_content = std::fs::read_to_string(&aux_path)
         .expect("Should be able to read created aux file");
     assert_eq!(read_content, aux_content);
 }

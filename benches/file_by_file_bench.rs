@@ -98,33 +98,6 @@ fn process_files_borrowed_mmap(files: &[PathBuf]) -> Result<Vec<FileResult>, Box
     Ok(results)
 }
 
-fn process_files_owned_read(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dyn std::error::Error>> {
-    let detector = SentenceDetectorDialog::new()?;
-    let mut results = Vec::new();
-    
-    for file_path in files {
-        let content = std::fs::read_to_string(file_path)?;
-        
-        let start = Instant::now();
-        // Use borrowed API and convert to owned inline for benchmarking
-        let borrowed_sentences = detector.detect_sentences_borrowed(&content)?;
-        let _owned_sentences: Vec<_> = borrowed_sentences.iter()
-            .map(|s| s.raw_content.to_string())
-            .collect();
-        let duration = start.elapsed();
-        
-        let result = FileResult::new(
-            file_path.clone(),
-            content.chars().count(),
-            borrowed_sentences.len(),
-            duration,
-        );
-        
-        results.push(result);
-    }
-    
-    Ok(results)
-}
 
 fn calculate_stats(results: &[FileResult]) -> (f64, f64, f64, f64) {
     if results.is_empty() {
@@ -164,28 +137,18 @@ fn bench_file_by_file_processing(c: &mut Criterion) {
     });
     println!("Dialog borrowed API completed");
     
-    println!("Testing Dialog owned API (read)...");
-    let owned_results = process_files_owned_read(&files).unwrap_or_else(|e| {
-        eprintln!("Owned API failed: {e}");
-        Vec::new()
-    });
-    println!("Dialog owned API completed");
     
     // Calculate and display statistics
     let (borrowed_min, borrowed_max, borrowed_avg, borrowed_total) = calculate_stats(&borrowed_results);
-    let (owned_min, owned_max, owned_avg, owned_total) = calculate_stats(&owned_results);
     
     println!("=== Performance Results ===");
     println!("Dialog Borrowed (mmap): min={borrowed_min:.0} max={borrowed_max:.0} avg={borrowed_avg:.0} chars/sec ({borrowed_total:.0} total chars)");
-    println!("Dialog Owned (read): min={owned_min:.0} max={owned_max:.0} avg={owned_avg:.0} chars/sec ({owned_total:.0} total chars)");
     
-    // Check sentence count consistency
+    // Display sentence count
     let borrowed_sentences: usize = borrowed_results.iter().map(|r| r.sentences).sum();
-    let owned_sentences: usize = owned_results.iter().map(|r| r.sentences).sum();
     
     println!("=== Sentence Count Validation ===");
     println!("Dialog Borrowed: {borrowed_sentences} sentences");
-    println!("Dialog Owned: {owned_sentences} sentences");
     
     // WHY: use all FileResult fields to prevent dead code warnings
     if !borrowed_results.is_empty() {
@@ -206,13 +169,6 @@ fn bench_file_by_file_processing(c: &mut Criterion) {
         })
     });
     
-    // Benchmark owned API (read-based)
-    group.bench_function("dialog_owned_read", |b| {
-        b.iter(|| {
-            let results = process_files_owned_read(black_box(&files)).unwrap();
-            black_box(results);
-        })
-    });
     
     group.finish();
 }

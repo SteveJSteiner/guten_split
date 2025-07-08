@@ -6,7 +6,7 @@ use regex_automata::{meta::Regex, Input};
 use std::collections::HashMap;
 use tracing::{debug, info};
 
-use super::{DetectedSentence, DetectedSentenceBorrowed, Span, AbbreviationChecker};
+use super::{DetectedSentenceBorrowed, Span, AbbreviationChecker};
 
 // Type-safe position wrappers to prevent byte/char and 0/1-based confusion
 
@@ -795,21 +795,6 @@ impl SentenceDetectorDialog {
     }
 
 
-    /// Legacy API for backward compatibility
-    pub fn detect_sentences(&self, text: &str) -> Result<Vec<DetectedSentence>> {
-        let borrowed_sentences = self.detect_sentences_borrowed(text)?;
-        
-        let legacy_sentences = borrowed_sentences
-            .into_iter()
-            .map(|borrowed| DetectedSentence {
-                index: borrowed.index,
-                normalized_content: borrowed.normalize(),
-                span: borrowed.span,
-            })
-            .collect();
-            
-        Ok(legacy_sentences)
-    }
 }
 
 #[cfg(test)]

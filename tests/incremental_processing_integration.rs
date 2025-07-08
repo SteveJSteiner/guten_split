@@ -4,7 +4,7 @@
 #![cfg(feature = "test-helpers")]
 
 use std::process::Command;
-use seams::incremental::{aux_file_exists, cache_exists, create_complete_aux_file, read_aux_file, read_cache};
+use seams::incremental::{aux_file_exists, cache_exists, create_complete_aux_file, read_cache, generate_aux_file_path};
 
 mod integration;
 use integration::TestFixture;
@@ -31,7 +31,7 @@ async fn test_skip_complete_aux_files() {
     assert!(aux_file_exists(&source_path), "Aux file should exist after first run");
     assert!(cache_exists(&fixture.root_path), "Cache file should exist after first run");
     
-    let aux_content = read_aux_file(&source_path).expect("Should be able to read aux file");
+    let aux_content = std::fs::read_to_string(generate_aux_file_path(&source_path)).expect("Should be able to read aux file");
     let cache_content = read_cache(&fixture.root_path).expect("Should be able to read cache file");
     
     // Second run - should skip the file
@@ -47,7 +47,7 @@ async fn test_skip_complete_aux_files() {
            "Second run should report 1 skipped file, stdout: {stdout2}");
     
     // Verify aux file is unchanged and cache still exists
-    let aux_content_after = read_aux_file(&source_path).expect("Should be able to read aux file after second run");
+    let aux_content_after = std::fs::read_to_string(generate_aux_file_path(&source_path)).expect("Should be able to read aux file after second run");
     assert_eq!(aux_content, aux_content_after, "Aux file content should be unchanged");
     
     let cache_content_after = read_cache(&fixture.root_path).expect("Cache should still exist after second run");
@@ -91,7 +91,7 @@ async fn test_process_aux_files_missing_from_cache() {
     
     // Verify cache was created and aux file was regenerated
     assert!(cache_exists(&fixture.root_path), "Cache file should exist after processing");
-    let final_aux_content = read_aux_file(&source_path).expect("Should be able to read aux file");
+    let final_aux_content = std::fs::read_to_string(generate_aux_file_path(&source_path)).expect("Should be able to read aux file");
     let lines: Vec<&str> = final_aux_content.lines().collect();
     
     // Should have multiple sentences detected
@@ -172,7 +172,7 @@ async fn test_deleted_aux_files_regenerated() {
     
     // Verify aux file was regenerated
     assert!(aux_file_exists(&source_path), "Aux file should be regenerated");
-    let aux_content = read_aux_file(&source_path).expect("Should be able to read regenerated aux file");
+    let aux_content = std::fs::read_to_string(generate_aux_file_path(&source_path)).expect("Should be able to read regenerated aux file");
     assert!(!aux_content.is_empty(), "Regenerated aux file should have content");
     assert!(aux_content.ends_with('\n'), "Regenerated aux file should end with newline");
 }
@@ -240,9 +240,9 @@ async fn test_mixed_incremental_states() {
     assert!(aux_file_exists(&path2), "File2 aux should exist");
     assert!(aux_file_exists(&path3), "File3 aux should be regenerated");
     
-    let aux1 = read_aux_file(&path1).expect("Should read file1 aux");
-    let aux2 = read_aux_file(&path2).expect("Should read file2 aux");
-    let aux3 = read_aux_file(&path3).expect("Should read file3 aux");
+    let aux1 = std::fs::read_to_string(generate_aux_file_path(&path1)).expect("Should read file1 aux");
+    let aux2 = std::fs::read_to_string(generate_aux_file_path(&path2)).expect("Should read file2 aux");
+    let aux3 = std::fs::read_to_string(generate_aux_file_path(&path3)).expect("Should read file3 aux");
     
     assert!(aux1.ends_with('\n'), "File1 aux should end with newline");
     assert!(aux2.ends_with('\n'), "File2 aux should end with newline");
