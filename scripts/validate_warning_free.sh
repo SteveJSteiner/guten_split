@@ -71,8 +71,8 @@ run_and_check "cargo build" "Standard debug build"
 # Release Build
 run_and_check "cargo build --release" "Release build"
 
-# Build with Features
-run_and_check "cargo build --features mmap" "Build with mmap feature"
+# Build with Features (if any available)
+# Note: No optional features currently exist - all dependencies are core
 
 # Build Specific Binaries
 run_and_check "cargo build --bin seams" "Build seams binary"
@@ -114,9 +114,7 @@ echo "🎯 Feature Matrix Testing"
 echo "========================="
 
 # Test All Feature Combinations
-run_and_check "cargo test --features mmap" "Test with mmap feature"
 run_and_check "cargo test --features test-helpers" "Test with test-helpers feature"
-run_and_check "cargo test --features \"mmap,test-helpers\"" "Test with multiple features"
 run_and_check "cargo test --all-features" "Test with all features"
 run_and_check "cargo test --no-default-features" "Test with no default features"
 

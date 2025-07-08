@@ -3,9 +3,8 @@ use seams::discovery;
 use seams::sentence_detector::dialog_detector::SentenceDetectorDialog;
 use std::path::PathBuf;
 use std::fs::File;
-use memmap2::{MmapOptions, Mmap};
+use memmap2::MmapOptions;
 use std::time::Instant;
-use dotenvy;
 
 #[derive(Debug, Clone)]
 struct FileResult {
@@ -41,12 +40,12 @@ fn get_sample_files() -> Vec<PathBuf> {
         let mirror_dir = std::env::var("GUTENBERG_MIRROR_DIR")
             .unwrap_or_else(|_| {
                 let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-                format!("{}/gutenberg_texts", home)
+                format!("{home}/gutenberg_texts")
             });
         let root_dir = PathBuf::from(mirror_dir);
 
         if !root_dir.exists() {
-            eprintln!("Gutenberg mirror directory {:?} does not exist", root_dir);
+            eprintln!("Gutenberg mirror directory {root_dir:?} does not exist");
             return Vec::new();
         }
 
@@ -160,14 +159,14 @@ fn bench_file_by_file_processing(c: &mut Criterion) {
     
     println!("Testing Dialog borrowed API (mmap)...");
     let borrowed_results = process_files_borrowed_mmap(&files).unwrap_or_else(|e| {
-        eprintln!("Borrowed API failed: {}", e);
+        eprintln!("Borrowed API failed: {e}");
         Vec::new()
     });
     println!("Dialog borrowed API completed");
     
     println!("Testing Dialog owned API (read)...");
     let owned_results = process_files_owned_read(&files).unwrap_or_else(|e| {
-        eprintln!("Owned API failed: {}", e);
+        eprintln!("Owned API failed: {e}");
         Vec::new()
     });
     println!("Dialog owned API completed");
@@ -177,18 +176,23 @@ fn bench_file_by_file_processing(c: &mut Criterion) {
     let (owned_min, owned_max, owned_avg, owned_total) = calculate_stats(&owned_results);
     
     println!("=== Performance Results ===");
-    println!("Dialog Borrowed (mmap): min={:.0} max={:.0} avg={:.0} chars/sec ({:.0} total chars)", 
-             borrowed_min, borrowed_max, borrowed_avg, borrowed_total);
-    println!("Dialog Owned (read): min={:.0} max={:.0} avg={:.0} chars/sec ({:.0} total chars)", 
-             owned_min, owned_max, owned_avg, owned_total);
+    println!("Dialog Borrowed (mmap): min={borrowed_min:.0} max={borrowed_max:.0} avg={borrowed_avg:.0} chars/sec ({borrowed_total:.0} total chars)");
+    println!("Dialog Owned (read): min={owned_min:.0} max={owned_max:.0} avg={owned_avg:.0} chars/sec ({owned_total:.0} total chars)");
     
     // Check sentence count consistency
     let borrowed_sentences: usize = borrowed_results.iter().map(|r| r.sentences).sum();
     let owned_sentences: usize = owned_results.iter().map(|r| r.sentences).sum();
     
     println!("=== Sentence Count Validation ===");
-    println!("Dialog Borrowed: {} sentences", borrowed_sentences);
-    println!("Dialog Owned: {} sentences", owned_sentences);
+    println!("Dialog Borrowed: {borrowed_sentences} sentences");
+    println!("Dialog Owned: {owned_sentences} sentences");
+    
+    // WHY: use all FileResult fields to prevent dead code warnings
+    if !borrowed_results.is_empty() {
+        let total_duration: std::time::Duration = borrowed_results.iter().map(|r| r.duration).sum();
+        let file_paths: Vec<_> = borrowed_results.iter().map(|r| &r.path).collect();
+        println!("Total processing time: {:.3}s across {} files", total_duration.as_secs_f64(), file_paths.len());
+    }
     
     let total_chars = borrowed_total as u64;
     let mut group = c.benchmark_group("file_by_file_processing");

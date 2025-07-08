@@ -26,8 +26,8 @@ cargo build --release
 ```bash
 cargo build --features mmap
 ```
-- Builds with optional memory-mapped I/O support
-- Required for file-by-file benchmarks
+- Example of building with optional features (if any are available)
+- Note: memmap2 is now a core dependency and always available
 
 **Build Specific Binary**
 ```bash
@@ -110,7 +110,7 @@ cargo bench reader_bench
 # Detector instantiation benchmarks  
 cargo bench detector_instantiation_bench
 
-# File-by-file processing benchmarks (requires mmap feature)
+# File-by-file processing benchmarks
 cargo bench file_by_file_bench
 
 # Run benchmark tests for quick validation
@@ -119,8 +119,8 @@ cargo bench --bench detector_instantiation_bench -- --test
 
 **Run Benchmarks with Features**
 ```bash
-# Required for file-by-file benchmarks
-cargo bench --features mmap file_by_file_bench
+# Example with features (if any optional features exist)
+cargo bench --features some_feature
 ```
 
 **Environment Setup for Benchmarks**
@@ -269,7 +269,7 @@ cargo bench -- --output-format html
 cargo bench gutenberg_throughput
 
 # Validate concurrency vs sequential performance
-cargo bench file_by_file_bench --features mmap
+cargo bench file_by_file_bench
 ```
 
 ### Memory and Resource Testing
@@ -344,14 +344,14 @@ cargo bench
 # Default features
 cargo test
 
-# With mmap feature
-cargo test --features mmap
+# With optional features (if any)
+cargo test --features some_feature
 
 # With test helpers (for incremental processing integration tests)
 cargo test --features test-helpers
 
 # Multiple features
-cargo test --features "mmap,test-helpers"
+cargo test --features "test-helpers"
 
 # All features
 cargo test --all-features
@@ -406,17 +406,14 @@ cargo bench --release
 - Benchmarks: Variable (depends on dataset size)
 
 ### Feature Flags
-- **`mmap`**: Enables memory-mapped I/O support
-  - Required for: `file_by_file_bench` benchmark
-  - Usage: `cargo test --features mmap`
 - **`test-helpers`**: Enables integration test helper functions
   - Required for: Incremental processing integration tests
   - Usage: `cargo test --features test-helpers`
   - Eliminates false positive dead code warnings for test utilities
 
 ### Memory-Mapped I/O
-- Benchmarks requiring `mmap` feature: `file_by_file_bench`
-- Build with `--features mmap` when testing memory-mapped functionality
+- memmap2 is now a core dependency, always available
+- No feature flags required for memory-mapped functionality
 
 ### Environment Dependencies
 - `GUTENBERG_MIRROR_DIR`: Required for realistic benchmark data

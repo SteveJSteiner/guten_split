@@ -4,20 +4,23 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use tokio::fs::File;
+use std::sync::Arc;
 use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::sync::Semaphore;
 use tracing::info;
+use memmap2::MmapOptions;
+use num_cpus::get as num_cpus_get;
 
 mod discovery;
 mod reader;
 mod sentence_detector;
 mod incremental;
 
-use crate::incremental::{generate_aux_file_path, generate_cache_path, cache_exists, read_cache_async, aux_file_exists, read_aux_file, create_complete_aux_file, read_cache};
+use crate::incremental::{generate_aux_file_path, generate_cache_path, cache_exists, read_cache_async, aux_file_exists, create_complete_aux_file, read_cache};
 
 /// Cache for tracking completed auxiliary files
 /// WHY: Provides robust incremental processing by tracking completion timestamps
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 struct ProcessingCache {
     /// Map from source file path to completion timestamp (seconds since epoch)
     completed_files: HashMap<String, u64>,
@@ -115,21 +118,22 @@ async fn should_process_file(source_path: &Path, cache: &ProcessingCache, overwr
     Ok(true)
 }
 
-/// Write sentences to auxiliary file in PRD F-7 format
-/// WHY: Implements core requirement for auxiliary file generation
-async fn write_auxiliary_file(
+
+/// Write auxiliary file with borrowed sentence data in F-5 format
+/// WHY: Zero-allocation async I/O optimized for mmap-based processing
+async fn write_auxiliary_file_borrowed(
     aux_path: &Path,
-    sentences: &[sentence_detector::DetectedSentence],
+    sentences: &[sentence_detector::DetectedSentenceBorrowed<'_>],
     _detector: &sentence_detector::dialog_detector::SentenceDetectorDialog,
 ) -> Result<()> {
-    let file = File::create(aux_path).await?;
+    let file = tokio::fs::File::create(aux_path).await?;
     let mut writer = BufWriter::new(file);
     
     for sentence in sentences {
-        // Format manually since dialog detector uses different API
+        // WHY: Call normalize() on-demand to maintain zero-allocation benefits
         let formatted_line = format!("{}\t{}\t({},{},{},{})", 
             sentence.index, 
-            sentence.normalized_content,
+            sentence.normalize(),
             sentence.span.start_line,
             sentence.span.start_col,
             sentence.span.end_line,
@@ -141,6 +145,99 @@ async fn write_auxiliary_file(
     
     writer.flush().await?;
     Ok(())
+}
+
+/// Process multiple files in parallel using memory-mapped I/O
+/// WHY: Combines async orchestration with mmap for optimal performance and true parallelism
+async fn process_files_parallel(
+    file_paths: &[&PathBuf],
+    cache: ProcessingCache,
+    overwrite_all: bool,
+    fail_fast: bool,
+    max_concurrent: usize,
+) -> Result<(u64, u64, u64, u64, u64)> {
+    let semaphore = Arc::new(Semaphore::new(max_concurrent));
+    let detector = Arc::new(
+        sentence_detector::dialog_detector::SentenceDetectorDialog::new()
+            .map_err(|e| anyhow::anyhow!("Failed to initialize dialog sentence detector: {}", e))?
+    );
+    
+    let tasks: Vec<_> = file_paths.iter().map(|&path| {
+        let semaphore = semaphore.clone();
+        let detector = detector.clone();
+        let path = path.clone();
+        let cache_clone = cache.clone();
+        
+        tokio::spawn(async move {
+            let _permit = semaphore.acquire().await.unwrap();
+            
+            // WHY: Check if file should be processed based on cache and incremental rules
+            let should_process = should_process_file(&path, &cache_clone, overwrite_all).await
+                .unwrap_or(true); // Process on error to be safe
+            
+            if !should_process {
+                return Ok((0u64, 0u64, 0u64, true)); // skipped
+            }
+            
+            // WHY: Use mmap for efficient file access instead of loading into memory
+            let file = std::fs::File::open(&path)?;
+            let mmap = unsafe { MmapOptions::new().map(&file)? };
+            let content = std::str::from_utf8(&mmap)
+                .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in file: {}", path.display()))?;
+            
+            // WHY: Use borrowed API for zero-allocation sentence detection
+            let sentences = detector.detect_sentences_borrowed(content)?;
+            let sentence_count = sentences.len() as u64;
+            let byte_count = content.len() as u64;
+            
+            // WHY: Generate auxiliary file as per F-7 requirement
+            let aux_path = generate_aux_file_path(&path);
+            write_auxiliary_file_borrowed(&aux_path, &sentences, &detector).await?;
+            
+            info!("Processed {}: {} sentences, {} bytes", path.display(), sentence_count, byte_count);
+            
+            Ok((sentence_count, byte_count, 1u64, false)) // sentences, bytes, files_processed, skipped
+        })
+    }).collect();
+    
+    let mut total_sentences = 0u64;
+    let mut total_bytes = 0u64;
+    let mut processed_files = 0u64;
+    let mut skipped_files = 0u64;
+    let mut failed_files = 0u64;
+    
+    // WHY: Wait for all tasks and handle results
+    let results = futures::future::join_all(tasks).await;
+    
+    for result in results {
+        match result {
+            Ok(Ok((sentences, bytes, files, skipped))) => {
+                total_sentences += sentences;
+                total_bytes += bytes;
+                if skipped {
+                    skipped_files += 1;
+                } else {
+                    processed_files += files;
+                }
+            }
+            Ok(Err(e)) => {
+                info!("File processing error: {}", e);
+                failed_files += 1;
+                if fail_fast {
+                    return Err(e);
+                }
+            }
+            Err(e) => {
+                info!("Task execution error: {}", e);
+                failed_files += 1;
+                if fail_fast {
+                    return Err(anyhow::anyhow!("Task failed: {}", e));
+                }
+            }
+        }
+    }
+    
+    Ok((total_sentences, total_bytes, processed_files, skipped_files, failed_files))
 }
 
 #[derive(Parser, Debug)]
@@ -159,9 +256,6 @@ struct Args {
     #[arg(long)]
     fail_fast: bool,
     
-    /// Use memory-mapped I/O instead of async buffered
-    #[arg(long)]
-    use_mmap: bool,
     
     /// Suppress console progress bars
     #[arg(long)]
@@ -254,139 +348,43 @@ async fn main() -> Result<()> {
             info!("Cache file size: {} bytes", cache_size);
         }
         
-        let reader_config = reader::ReaderConfig {
-            fail_fast: args.fail_fast,
-            buffer_size: 8192,
-        };
-        let file_reader = reader::AsyncFileReader::new(reader_config);
+        // WHY: Use bounded concurrency to prevent resource exhaustion
+        let max_concurrent = num_cpus_get().min(8); // Limit to 8 concurrent files max
+        info!("Processing files with concurrency limit: {}", max_concurrent);
         
-        // WHY: process files sequentially to demonstrate async reading without overwhelming memory
         let valid_paths: Vec<_> = valid_files.iter().map(|f| &f.path).collect();
-        let read_results = file_reader.read_files_batch(&valid_paths).await?;
         
-        // WHY: Use dialog detector with quote truncation fix
-        info!("Initializing dialog-aware sentence detector");
-        let sentence_detector = sentence_detector::dialog_detector::SentenceDetectorDialog::new()
-            .map_err(|e| anyhow::anyhow!("Failed to initialize dialog sentence detector: {}", e))?;
-        info!("Successfully initialized dialog sentence detector");
+        // WHY: Use new parallel mmap-based processing for optimal performance
+        let (total_sentences, total_bytes, processed_files, skipped_files, failed_files) = 
+            process_files_parallel(&valid_paths, cache.clone(), args.overwrite_all, args.fail_fast, max_concurrent).await?;
         
-        let mut total_lines = 0u64;
-        let mut total_bytes = 0u64;
-        let mut total_sentences = 0u64;
-        let mut successful_reads = 0;
-        let mut failed_reads = 0;
-        let mut skipped_files = 0;
-        
-        for (lines, stats) in read_results {
-            total_lines += stats.lines_read;
-            total_bytes += stats.bytes_read;
-            
-            if stats.read_error.is_some() {
-                failed_reads += 1;
-                if let Some(ref error) = stats.read_error {
-                    info!("Read error for {}: {}", stats.file_path, error);
-                }
-            } else {
-                successful_reads += 1;
-                
-                // WHY: check if file should be processed based on cache and incremental rules
-                let source_path = Path::new(&stats.file_path);
-                let should_process = match should_process_file(source_path, &cache, args.overwrite_all).await {
-                    Ok(should_process) => should_process,
-                    Err(e) => {
-                        info!("Error checking if {} should be processed: {}", stats.file_path, e);
-                        if args.fail_fast {
-                            return Err(e);
-                        }
-                        true // Process on error to be safe
-                    }
-                };
-                
-                if !should_process {
-                    skipped_files += 1;
-                    continue;
-                }
-                
-                // WHY: process sentences only for files that should be processed
-                let file_content = lines.join("\n");
-                
-                match sentence_detector.detect_sentences(&file_content) {
-                    Ok(sentences) => {
-                        let sentence_count = sentences.len() as u64;
-                        total_sentences += sentence_count;
-                        
-                        info!("Detected {} sentences in {}", sentence_count, stats.file_path);
-                        
-                        // WHY: generate auxiliary file as per F-7 requirement
-                        // Note: For simple aux file creation, external users can use create_complete_aux_file()
-                        let aux_path = generate_aux_file_path(source_path);
-                        
-                        match write_auxiliary_file(&aux_path, &sentences, &sentence_detector).await {
-                            Ok(()) => {
-                                info!("Successfully wrote auxiliary file: {}", aux_path.display());
-                                
-                                // WHY: validate aux file was written correctly using public API
-                                if let Ok(aux_content) = read_aux_file(source_path) {
-                                    let line_count = aux_content.lines().count();
-                                    if line_count != sentence_count as usize {
-                                        info!("Warning: aux file line count ({}) doesn't match sentence count ({})", 
-                                              line_count, sentence_count);
-                                    }
-                                }
-                                
-                                // WHY: mark file as completed in cache after successful aux file write
-                                cache.mark_completed(source_path);
-                                
-                                // WHY: demonstrate output format as per F-5 specification
-                                if sentence_count > 0 && sentence_count <= 3 {
-                                    info!("Sample sentences from {}:", stats.file_path);
-                                    for sentence in sentences.iter().take(2) {
-                                        let formatted = format!("{}\t{}\t({},{},{},{})", 
-                                            sentence.index, 
-                                            sentence.normalized_content,
-                                            sentence.span.start_line,
-                                            sentence.span.start_col,
-                                            sentence.span.end_line,
-                                            sentence.span.end_col
-                                        );
-                                        info!("  {}", formatted);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                info!("Failed to write auxiliary file {}: {}", aux_path.display(), e);
-                                if args.fail_fast {
-                                    return Err(e);
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        info!("Failed to detect sentences in {}: {}", stats.file_path, e);
-                        if args.fail_fast {
-                            return Err(anyhow::anyhow!("Sentence detection failed: {}", e));
-                        }
+        // WHY: Update cache for successfully processed files (not skipped ones)
+        if processed_files > 0 {
+            for path in &valid_paths {
+                if aux_file_exists(path) {
+                    // Only mark as completed if the file was actually processed in this run
+                    // Check if this file was newly created by checking if it should have been processed
+                    let should_process = should_process_file(path, &cache, args.overwrite_all).await.unwrap_or(false);
+                    if should_process {
+                        cache.mark_completed(path);
                     }
                 }
             }
-            
-            info!("Read {}: {} lines, {} bytes", stats.file_path, stats.lines_read, stats.bytes_read);
         }
         
         println!("File processing complete:");
-        println!("  Successfully processed: {} files", successful_reads - skipped_files);
+        println!("  Successfully processed: {processed_files} files");
         if skipped_files > 0 {
             println!("  Skipped (complete aux files): {skipped_files} files");
         }
-        if failed_reads > 0 {
-            println!("  Failed to read: {failed_reads} files");
+        if failed_files > 0 {
+            println!("  Failed to process: {failed_files} files");
         }
-        println!("  Total lines processed: {total_lines}");
         println!("  Total bytes processed: {total_bytes}");
         println!("  Total sentences detected: {total_sentences}");
         
-        info!("File processing completed: {} processed, {} skipped, {} failed, {} sentences detected", 
-              successful_reads - skipped_files, skipped_files, failed_reads, total_sentences);
+        info!("Parallel mmap processing completed: {} processed, {} skipped, {} failed, {} sentences detected", 
+              processed_files, skipped_files, failed_files, total_sentences);
               
         // WHY: Save cache after processing to persist completion state for future runs
         if let Err(e) = cache.save(&cache_path).await {

@@ -20,7 +20,7 @@ async fn test_skip_complete_aux_files() {
     
     // First run - should process the file
     let output1 = Command::new("cargo")
-        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
+        .args(["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run first command");
     
@@ -36,7 +36,7 @@ async fn test_skip_complete_aux_files() {
     
     // Second run - should skip the file
     let output2 = Command::new("cargo")
-        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
+        .args(["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run second command");
     
@@ -44,7 +44,7 @@ async fn test_skip_complete_aux_files() {
     
     let stdout2 = String::from_utf8_lossy(&output2.stdout);
     assert!(stdout2.contains("Skipped (complete aux files): 1 files"), 
-           "Second run should report 1 skipped file, stdout: {}", stdout2);
+           "Second run should report 1 skipped file, stdout: {stdout2}");
     
     // Verify aux file is unchanged and cache still exists
     let aux_content_after = read_aux_file(&source_path).expect("Should be able to read aux file after second run");
@@ -76,7 +76,7 @@ async fn test_process_aux_files_missing_from_cache() {
     let output = tokio::time::timeout(
         std::time::Duration::from_secs(30),
         tokio::process::Command::new("cargo")
-            .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
+            .args(["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
             .output()
     )
     .await
@@ -87,7 +87,7 @@ async fn test_process_aux_files_missing_from_cache() {
     
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Successfully processed: 1 files"), 
-           "Should report 1 processed file, stdout: {}", stdout);
+           "Should report 1 processed file, stdout: {stdout}");
     
     // Verify cache was created and aux file was regenerated
     assert!(cache_exists(&fixture.root_path), "Cache file should exist after processing");
@@ -110,7 +110,7 @@ async fn test_overwrite_all_flag() {
     
     // First run - should process the file
     let output1 = Command::new("cargo")
-        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
+        .args(["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run first command");
     
@@ -121,7 +121,7 @@ async fn test_overwrite_all_flag() {
     
     // Second run with --overwrite-all - should process the file again
     let output2 = Command::new("cargo")
-        .args(&["run", "--bin", "seams", "--", "--overwrite-all", fixture.root_path.to_str().unwrap()])
+        .args(["run", "--bin", "seams", "--", "--overwrite-all", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run second command");
     
@@ -129,9 +129,9 @@ async fn test_overwrite_all_flag() {
     
     let stdout2 = String::from_utf8_lossy(&output2.stdout);
     assert!(stdout2.contains("Successfully processed: 1 files"), 
-           "Second run with --overwrite-all should report 1 processed file, stdout: {}", stdout2);
+           "Second run with --overwrite-all should report 1 processed file, stdout: {stdout2}");
     assert!(!stdout2.contains("Skipped"), 
-           "Second run with --overwrite-all should not report any skipped files, stdout: {}", stdout2);
+           "Second run with --overwrite-all should not report any skipped files, stdout: {stdout2}");
 }
 
 /// Test that deleted aux files are regenerated even if in cache  
@@ -145,7 +145,7 @@ async fn test_deleted_aux_files_regenerated() {
     
     // First run to create aux file and cache
     let output1 = Command::new("cargo")
-        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
+        .args(["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run first command");
     
@@ -160,7 +160,7 @@ async fn test_deleted_aux_files_regenerated() {
     
     // Second run - should detect missing aux file and regenerate it
     let output2 = Command::new("cargo")
-        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
+        .args(["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run second command");
     
@@ -168,7 +168,7 @@ async fn test_deleted_aux_files_regenerated() {
     
     let stdout2 = String::from_utf8_lossy(&output2.stdout);
     assert!(stdout2.contains("Successfully processed: 1 files"), 
-           "Should report 1 processed file when aux file is missing, stdout: {}", stdout2);
+           "Should report 1 processed file when aux file is missing, stdout: {stdout2}");
     
     // Verify aux file was regenerated
     assert!(aux_file_exists(&source_path), "Aux file should be regenerated");
@@ -193,7 +193,7 @@ async fn test_mixed_incremental_states() {
     
     // First run - process all files to create cache
     let output1 = Command::new("cargo")
-        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
+        .args(["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run first command");
     
@@ -223,7 +223,7 @@ async fn test_mixed_incremental_states() {
     
     // Second run - should skip file1, process file2 (newer), and regenerate file3 (missing aux)
     let output2 = Command::new("cargo")
-        .args(&["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
+        .args(["run", "--bin", "seams", "--", fixture.root_path.to_str().unwrap()])
         .output()
         .expect("Failed to run second command");
     
@@ -231,9 +231,9 @@ async fn test_mixed_incremental_states() {
     
     let stdout2 = String::from_utf8_lossy(&output2.stdout);
     assert!(stdout2.contains("Successfully processed: 2 files"), 
-           "Should report 2 processed files (file2 and file3), stdout: {}", stdout2);
+           "Should report 2 processed files (file2 and file3), stdout: {stdout2}");
     assert!(stdout2.contains("Skipped (complete aux files): 1 files"), 
-           "Should report 1 skipped file (file1), stdout: {}", stdout2);
+           "Should report 1 skipped file (file1), stdout: {stdout2}");
     
     // Verify all aux files exist 
     assert!(aux_file_exists(&path1), "File1 aux should still exist");

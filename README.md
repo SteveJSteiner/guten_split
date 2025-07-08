@@ -21,12 +21,12 @@ This benchmark tests sentence detection performance on real Project Gutenberg te
 
 3. **Run the benchmark:**
    ```bash
-   cargo bench --features mmap --bench file_by_file_bench
+   cargo bench --bench file_by_file_bench
    ```
 
 #### Alternative setup (without .env):
 ```bash
-GUTENBERG_MIRROR_DIR=/path/to/texts cargo bench --features mmap --bench file_by_file_bench
+GUTENBERG_MIRROR_DIR=/path/to/texts cargo bench --bench file_by_file_bench
 ```
 
 The benchmark will automatically:

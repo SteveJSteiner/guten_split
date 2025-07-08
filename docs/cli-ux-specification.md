@@ -54,7 +54,6 @@ ARGS:
 OPTIONS:
     --overwrite_all       Overwrite even complete aux files
     --fail_fast          Abort on first error (default: continue with logging)
-    --use_mmap           Use memory-mapped I/O for benchmarking
     --no_progress        Suppress progress bars (useful for CI)
     --stats_out <PATH>   Stats output file [default: run_stats.json]
     -h, --help           Print help information
@@ -70,8 +69,8 @@ EXAMPLES:
     # Overwrite existing results
     seams --overwrite_all /path/to/gutenberg
 
-    # Benchmark with memory-mapped I/O
-    seams --use_mmap /path/to/gutenberg
+    # Process with fail-fast enabled
+    seams --fail_fast /path/to/gutenberg
 
 OUTPUT:
     Creates *_seams.txt files alongside source files with format:
@@ -120,8 +119,8 @@ Error: Cannot write auxiliary file '/path/to/file_seams.txt'
 
 **Memory/Performance Warnings:**
 ```
-Warning: Large file detected (500MB+), consider using --use_mmap
-→ Memory-mapped I/O may improve performance for very large files
+Warning: Large file detected (500MB+), processing with optimized memory-mapped I/O
+→ High-performance processing mode automatically enabled
 → Current file: /path/to/large-file-0.txt
 ```
 

@@ -24,10 +24,11 @@ tracing-subscriber = { version = "0.3", features = ["json"] }
 anyhow = "1.0"
 regex-automata = "0.4"
 indicatif = "0.17"
-memmap2 = { version = "0.9", optional = true }
+memmap2 = "0.9"
 glob = "0.3"
 futures = "0.3"
 tokio-stream = { version = "0.1", features = ["fs"] }
+num_cpus = "1.0"
 
 [dev-dependencies]
 tempfile = "3.0"
@@ -36,7 +37,6 @@ dotenvy = "0.15"
 
 [features]
 default = []
-mmap = ["memmap2"]
 test-helpers = []
 
 [[bench]]
@@ -48,5 +48,4 @@ harness = false
 [[bench]]
 name = "file_by_file_bench"
 harness = false
-required-features = ["mmap"]
 
