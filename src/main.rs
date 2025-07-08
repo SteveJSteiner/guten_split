@@ -3,7 +3,7 @@ use clap::Parser;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
+use std::time::{SystemTime, Instant};
 use std::sync::Arc;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio::sync::Semaphore;
@@ -220,6 +220,49 @@ impl ProcessingCache {
     }
 }
 
+/// Per-file processing statistics
+/// WHY: Collects metrics for each file processed to meet PRD F-8 requirements
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct FileStats {
+    /// File path relative to root directory
+    path: String,
+    /// Number of characters processed
+    chars_processed: u64,
+    /// Number of sentences detected
+    sentences_detected: u64,
+    /// Processing time in milliseconds
+    processing_time_ms: u64,
+    /// Throughput in characters per second
+    chars_per_sec: f64,
+    /// Processing status (success, skipped, failed)
+    status: String,
+    /// Error message if processing failed
+    error: Option<String>,
+}
+
+/// Aggregate run statistics
+/// WHY: Provides overall metrics for the entire run per PRD F-8 requirements
+#[derive(Serialize, Deserialize, Debug)]
+struct RunStats {
+    /// Timestamp when run started
+    run_start: String,
+    /// Total processing time in milliseconds
+    total_processing_time_ms: u64,
+    /// Total characters processed across all files
+    total_chars_processed: u64,
+    /// Total sentences detected across all files
+    total_sentences_detected: u64,
+    /// Overall throughput in characters per second
+    overall_chars_per_sec: f64,
+    /// Number of files successfully processed
+    files_processed: u64,
+    /// Number of files skipped (already complete)
+    files_skipped: u64,
+    /// Number of files that failed processing
+    files_failed: u64,
+    /// Per-file statistics
+    file_stats: Vec<FileStats>,
+}
 
 /// Determine if file should be processed based on cache and incremental rules
 /// WHY: Implements core F-9 logic using robust timestamp-based cache
@@ -281,7 +324,7 @@ async fn process_files_parallel(
     overwrite_use_cached_locations: bool,
     fail_fast: bool,
     max_concurrent: usize,
-) -> Result<(u64, u64, u64, u64, u64)> {
+) -> Result<(u64, u64, u64, u64, u64, Vec<FileStats>)> {
     let semaphore = Arc::new(Semaphore::new(max_concurrent));
     let detector = Arc::new(
         sentence_detector::dialog_detector::SentenceDetectorDialog::new()
@@ -296,13 +339,24 @@ async fn process_files_parallel(
         
         tokio::spawn(async move {
             let _permit = semaphore.acquire().await.unwrap();
+            let start_time = Instant::now();
             
             // WHY: Check if file should be processed based on cache and incremental rules
             let should_process = should_process_file(&path, &cache_clone, overwrite_all, overwrite_use_cached_locations).await
                 .unwrap_or(true); // Process on error to be safe
             
             if !should_process {
-                return Ok((0u64, 0u64, 0u64, true)); // skipped
+                let processing_time = start_time.elapsed();
+                let file_stats = FileStats {
+                    path: path.to_string_lossy().to_string(),
+                    chars_processed: 0,
+                    sentences_detected: 0,
+                    processing_time_ms: processing_time.as_millis() as u64,
+                    chars_per_sec: 0.0,
+                    status: "skipped".to_string(),
+                    error: None,
+                };
+                return Ok::<(u64, u64, u64, bool, FileStats), anyhow::Error>((0u64, 0u64, 0u64, true, file_stats)); // skipped
             }
             
             // WHY: Use mmap for efficient file access instead of loading into memory
@@ -320,9 +374,27 @@ async fn process_files_parallel(
             let aux_path = generate_aux_file_path(&path);
             write_auxiliary_file_borrowed(&aux_path, &sentences, &detector).await?;
             
+            let processing_time = start_time.elapsed();
+            let processing_time_ms = processing_time.as_millis() as u64;
+            let chars_per_sec = if processing_time.as_secs_f64() > 0.0 {
+                byte_count as f64 / processing_time.as_secs_f64()
+            } else {
+                0.0
+            };
+            
+            let file_stats = FileStats {
+                path: path.to_string_lossy().to_string(),
+                chars_processed: byte_count,
+                sentences_detected: sentence_count,
+                processing_time_ms,
+                chars_per_sec,
+                status: "success".to_string(),
+                error: None,
+            };
+            
             info!("Processed {}: {} sentences, {} bytes", path.display(), sentence_count, byte_count);
             
-            Ok((sentence_count, byte_count, 1u64, false)) // sentences, bytes, files_processed, skipped
+            Ok::<(u64, u64, u64, bool, FileStats), anyhow::Error>((sentence_count, byte_count, 1u64, false, file_stats)) // sentences, bytes, files_processed, skipped, stats
         })
     }).collect();
     
@@ -331,13 +403,14 @@ async fn process_files_parallel(
     let mut processed_files = 0u64;
     let mut skipped_files = 0u64;
     let mut failed_files = 0u64;
+    let mut file_stats = Vec::new();
     
     // WHY: Wait for all tasks and handle results
     let results = futures::future::join_all(tasks).await;
     
-    for result in results {
+    for (i, result) in results.into_iter().enumerate() {
         match result {
-            Ok(Ok((sentences, bytes, files, skipped))) => {
+            Ok(Ok((sentences, bytes, files, skipped, stats))) => {
                 total_sentences += sentences;
                 total_bytes += bytes;
                 if skipped {
@@ -345,10 +418,28 @@ async fn process_files_parallel(
                 } else {
                     processed_files += files;
                 }
+                file_stats.push(stats);
             }
             Ok(Err(e)) => {
                 info!("File processing error: {}", e);
                 failed_files += 1;
+                
+                // WHY: Create failed FileStats entry for error tracking
+                let failed_stats = FileStats {
+                    path: if i < file_paths.len() {
+                        file_paths[i].to_string_lossy().to_string()
+                    } else {
+                        "unknown".to_string()
+                    },
+                    chars_processed: 0,
+                    sentences_detected: 0,
+                    processing_time_ms: 0,
+                    chars_per_sec: 0.0,
+                    status: "failed".to_string(),
+                    error: Some(e.to_string()),
+                };
+                file_stats.push(failed_stats);
+                
                 if fail_fast {
                     return Err(e);
                 }
@@ -356,6 +447,23 @@ async fn process_files_parallel(
             Err(e) => {
                 info!("Task execution error: {}", e);
                 failed_files += 1;
+                
+                // WHY: Create failed FileStats entry for task execution error
+                let failed_stats = FileStats {
+                    path: if i < file_paths.len() {
+                        file_paths[i].to_string_lossy().to_string()
+                    } else {
+                        "unknown".to_string()
+                    },
+                    chars_processed: 0,
+                    sentences_detected: 0,
+                    processing_time_ms: 0,
+                    chars_per_sec: 0.0,
+                    status: "failed".to_string(),
+                    error: Some(format!("Task failed: {e}")),
+                };
+                file_stats.push(failed_stats);
+                
                 if fail_fast {
                     return Err(anyhow::anyhow!("Task failed: {}", e));
                 }
@@ -363,7 +471,7 @@ async fn process_files_parallel(
         }
     }
     
-    Ok((total_sentences, total_bytes, processed_files, skipped_files, failed_files))
+    Ok((total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats))
 }
 
 #[derive(Parser, Debug)]
@@ -515,72 +623,120 @@ async fn main() -> Result<()> {
     }
     
     // Process valid files with async reader
-    if !valid_files.is_empty() {
-        info!("Starting async file reading for {} valid files", valid_files.len());
-        
-        // WHY: Processing cache was already loaded during discovery phase
-        info!("Using processing cache from {}", cache_path.display());
-        
-        // WHY: Log cache status for debugging (sync API usage)
-        if let Ok(cache_content) = read_cache(&args.root_dir) {
-            let cache_size = cache_content.len();
-            info!("Cache file size: {} bytes", cache_size);
-        }
-        
-        // WHY: Use bounded concurrency to prevent resource exhaustion
-        let max_concurrent = num_cpus_get().min(8); // Limit to 8 concurrent files max
-        info!("Processing files with concurrency limit: {}", max_concurrent);
-        
-        let valid_paths: Vec<_> = valid_files.iter().map(|f| &f.path).collect();
-        
-        // WHY: Use new parallel mmap-based processing for optimal performance
-        let start_time = std::time::Instant::now();
-        let (total_sentences, total_bytes, processed_files, skipped_files, failed_files) = 
-            process_files_parallel(&valid_paths, cache.clone(), args.overwrite_all, args.overwrite_use_cached_locations, args.fail_fast, max_concurrent).await?;
-        let processing_duration = start_time.elapsed();
-        
-        // WHY: Update cache for successfully processed files (not skipped ones)
-        if processed_files > 0 {
-            for path in &valid_paths {
-                if aux_file_exists(path) {
-                    // Only mark as completed if the file was actually processed in this run
-                    // Check if this file was newly created by checking if it should have been processed
-                    let should_process = should_process_file(path, &cache, args.overwrite_all, args.overwrite_use_cached_locations).await.unwrap_or(false);
-                    if should_process {
-                        cache.mark_completed(path);
+    let (total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats, processing_duration) = 
+        if !valid_files.is_empty() {
+            info!("Starting async file reading for {} valid files", valid_files.len());
+            
+            // WHY: Processing cache was already loaded during discovery phase
+            info!("Using processing cache from {}", cache_path.display());
+            
+            // WHY: Log cache status for debugging (sync API usage)
+            if let Ok(cache_content) = read_cache(&args.root_dir) {
+                let cache_size = cache_content.len();
+                info!("Cache file size: {} bytes", cache_size);
+            }
+            
+            // WHY: Use bounded concurrency to prevent resource exhaustion
+            let max_concurrent = num_cpus_get().min(8); // Limit to 8 concurrent files max
+            info!("Processing files with concurrency limit: {}", max_concurrent);
+            
+            let valid_paths: Vec<_> = valid_files.iter().map(|f| &f.path).collect();
+            
+            // WHY: Use new parallel mmap-based processing for optimal performance
+            let start_time = std::time::Instant::now();
+            let (total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats) = 
+                process_files_parallel(&valid_paths, cache.clone(), args.overwrite_all, args.overwrite_use_cached_locations, args.fail_fast, max_concurrent).await?;
+            let processing_duration = start_time.elapsed();
+            
+            // WHY: Update cache for successfully processed files (not skipped ones)
+            if processed_files > 0 {
+                for path in &valid_paths {
+                    if aux_file_exists(path) {
+                        // Only mark as completed if the file was actually processed in this run
+                        // Check if this file was newly created by checking if it should have been processed
+                        let should_process = should_process_file(path, &cache, args.overwrite_all, args.overwrite_use_cached_locations).await.unwrap_or(false);
+                        if should_process {
+                            cache.mark_completed(path);
+                        }
                     }
                 }
             }
-        }
-        
-        println!("File processing complete:");
-        println!("  Successfully processed: {processed_files} files");
-        if skipped_files > 0 {
-            println!("  Skipped (complete aux files): {skipped_files} files");
-        }
-        if failed_files > 0 {
-            println!("  Failed to process: {failed_files} files");
-        }
-        println!("  Total bytes processed: {total_bytes}");
-        println!("  Total sentences detected: {total_sentences}");
-        println!("  Total time spent: {:.2}s", processing_duration.as_secs_f64());
-        
-        // WHY: Show performance metrics - Total characters / Total time spent
-        if total_bytes > 0 && processing_duration.as_secs_f64() > 0.0 {
-            let throughput_chars_per_sec = total_bytes as f64 / processing_duration.as_secs_f64();
-            let throughput_mb_per_sec = throughput_chars_per_sec / 1_000_000.0;
-            println!("  Throughput: {throughput_chars_per_sec:.0} chars/sec ({throughput_mb_per_sec:.2} MB/s)");
-        }
-        
-        info!("Parallel mmap processing completed: {} processed, {} skipped, {} failed, {} sentences detected", 
-              processed_files, skipped_files, failed_files, total_sentences);
-              
-        // WHY: Save cache after processing to persist completion state for future runs
-        if let Err(e) = cache.save(&cache_path).await {
-            info!("Warning: Failed to save processing cache: {}", e);
-            // Don't fail the entire process if cache save fails
+            
+            println!("File processing complete:");
+            println!("  Successfully processed: {processed_files} files");
+            if skipped_files > 0 {
+                println!("  Skipped (complete aux files): {skipped_files} files");
+            }
+            if failed_files > 0 {
+                println!("  Failed to process: {failed_files} files");
+            }
+            println!("  Total bytes processed: {total_bytes}");
+            println!("  Total sentences detected: {total_sentences}");
+            println!("  Total time spent: {:.2}s", processing_duration.as_secs_f64());
+            
+            // WHY: Show performance metrics - Total characters / Total time spent
+            if total_bytes > 0 && processing_duration.as_secs_f64() > 0.0 {
+                let throughput_chars_per_sec = total_bytes as f64 / processing_duration.as_secs_f64();
+                let throughput_mb_per_sec = throughput_chars_per_sec / 1_000_000.0;
+                println!("  Throughput: {throughput_chars_per_sec:.0} chars/sec ({throughput_mb_per_sec:.2} MB/s)");
+            }
+            
+            info!("Parallel mmap processing completed: {} processed, {} skipped, {} failed, {} sentences detected", 
+                  processed_files, skipped_files, failed_files, total_sentences);
+                  
+            // WHY: Save cache after processing to persist completion state for future runs
+            if let Err(e) = cache.save(&cache_path).await {
+                info!("Warning: Failed to save processing cache: {}", e);
+                // Don't fail the entire process if cache save fails
+            } else {
+                info!("Saved processing cache to {}", cache_path.display());
+            }
+            
+            (total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats, processing_duration)
         } else {
-            info!("Saved processing cache to {}", cache_path.display());
+            // WHY: No valid files found, return empty stats
+            (0, 0, 0, 0, 0, Vec::new(), std::time::Duration::from_millis(0))
+        };
+    
+    // WHY: Generate run statistics per PRD F-8 requirement
+    let overall_chars_per_sec = if processing_duration.as_secs_f64() > 0.0 {
+        total_bytes as f64 / processing_duration.as_secs_f64()
+    } else {
+        0.0
+    };
+    
+    let run_stats = RunStats {
+        run_start: SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap()
+            .as_secs().to_string(),
+        total_processing_time_ms: processing_duration.as_millis() as u64,
+        total_chars_processed: total_bytes,
+        total_sentences_detected: total_sentences,
+        overall_chars_per_sec,
+        files_processed: processed_files,
+        files_skipped: skipped_files,
+        files_failed: failed_files,
+        file_stats,
+    };
+    
+    // WHY: Write stats to JSON file as specified by --stats-out flag
+    match serde_json::to_string_pretty(&run_stats) {
+        Ok(json_content) => {
+            match tokio::fs::write(&args.stats_out, json_content).await {
+                Ok(()) => {
+                    info!("Stats written to {}", args.stats_out.display());
+                    println!("Stats written to {}", args.stats_out.display());
+                }
+                Err(e) => {
+                    info!("Warning: Failed to write stats file: {e}");
+                    println!("Warning: Failed to write stats file: {e}");
+                }
+            }
+        }
+        Err(e) => {
+            info!("Warning: Failed to serialize stats: {e}");
+            println!("Warning: Failed to serialize stats: {e}");
         }
     }
     
