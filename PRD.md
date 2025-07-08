@@ -46,8 +46,8 @@ F-11	Cache discovered file locations to avoid slow directory traversal on subseq
 5 Non-Functional Requirements
 
 Category	Requirement
-Tech Stack	Rust (2021 edition) with the Tokio async runtime; sentence DFA via regex-automata crate; progress bars via indicatif; built with cargo --release.
-Performance	≥ 10 MB/s sustained on NVMe SSD with async buffered I/O; ≤ 30 % single-core CPU when I/O-bound.
+Tech Stack	Rust (2021 edition); sentence DFA via regex-automata crate; built with cargo --release. See architecture documentation for implementation details.
+Performance	≥ 50 MB/s sustained throughput including all processing steps; target 1 GB/s; ≤ 30% single-core CPU when I/O-bound.
 Scalability	Should saturate multiple cores using Tokio’s work-stealing scheduler.
 Portability	Linux (x86-64, aarch64) and Windows 10+.
 Reliability	Deterministic output; idempotent reruns.
@@ -62,11 +62,9 @@ Observability	Structured logs (JSONLines), console progress bars (on by default)
 seams <root_dir>
     [--overwrite_all]   # overwrite even complete aux files
     [--fail_fast]       # abort on first error
-    [--use_mmap]        # use memory-mapped I/O instead of async buffered
     [--no_progress]     # suppress console progress bars
     [--stats_out <path>]# default: run_stats.json in CWD
 
-Progress: uses the indicatif crate to render multi-progress bars: files processed, bytes/s, chars/s, ETA.
 
 8 Acceptance Criteria
 	1.	Unit tests covering DFA boundary detection and normalisation rules.
@@ -103,17 +101,12 @@ Performance	DFA reuse across operations, async I/O pipeline, both buffered and m
 Distribution	Python wheels for Linux (x86_64/aarch64), Windows, macOS
 Dependencies	Depends on seams crate published to crates.io as pure Rust library
 
-Python API shall expose:
-- Individual text processing: `detector.detect_sentences(text)`
-- File processing: `detector.process_file(path, use_mmap=False)`
-- Async corpus processing: `FileDiscovery.process_corpus(root_dir)`
-- Same DetectedSentence and Span types as Rust API
-- CorpusStats matching run_stats.json format
+Python API design TBD - see task python-api-design-strategy_54.stevejs.md for current design evaluation of CLI wrapper vs native bindings approaches.
 
 12 Open Questions
 	1.	Which concrete DSL or regex subset will define the sentence-boundary spec?
-	2.	Should stats include per-sentence length histograms?
-	3.	Need coloured CLI progress bars or silent by default? (Current default = on.)
+	2.	Should stats include per-sentence length histograms? → See task sentence-metadata-statistics_55.stevejs.md
+	3.	Need coloured CLI progress bars or silent by default? → Resolved: No progress bars implemented
 	4.	Future: move from DFA to PDA for cross-paragraph context?
 
 13 Open Source Publication Requirements
