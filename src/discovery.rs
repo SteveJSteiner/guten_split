@@ -4,6 +4,10 @@ use glob::glob;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tracing::{debug, info, warn};
+use walkdir::WalkDir;
+use std::sync::Arc;
+use tokio::sync::mpsc;
+use futures::stream;
 
 /// Configuration for file discovery behavior
 #[derive(Debug, Clone)]
@@ -15,7 +19,7 @@ pub struct DiscoveryConfig {
 
 
 /// Result of file discovery validation
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FileValidation {
     pub path: PathBuf,
     pub is_valid_utf8: bool,
@@ -45,6 +49,170 @@ pub fn discover_files(
             state.next_file().await.map(|result| (result, state))
         }
     )
+}
+
+/// Parallel directory traversal using walkdir for improved performance
+/// WHY: walkdir can be parallelized while glob is inherently sequential
+pub fn discover_files_parallel(
+    root_dir: impl AsRef<Path>,
+    config: DiscoveryConfig,
+) -> impl Stream<Item = Result<FileValidation>> {
+    let root_path = root_dir.as_ref().to_path_buf();
+    let config = Arc::new(config);
+    
+    // Create a channel for sending discovered files
+    let (tx, rx) = mpsc::unbounded_channel();
+    
+    // Spawn a task to perform parallel directory traversal
+    tokio::spawn(async move {
+        let walker = WalkDir::new(&root_path)
+            .into_iter()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry.file_type().is_file() 
+                && entry.file_name().to_string_lossy().ends_with("-0.txt")
+            });
+        
+        // WHY: Collect paths first to enable parallel processing
+        let paths: Vec<_> = walker.map(|entry| entry.path().to_path_buf()).collect();
+        
+        info!("Parallel discovery found {} potential files", paths.len());
+        
+        // Process files in parallel using bounded concurrency
+        let max_concurrent = num_cpus::get().min(16); // Limit concurrent validations
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
+        
+        let validation_tasks: Vec<_> = paths.into_iter().map(|path| {
+            let config = config.clone();
+            let semaphore = semaphore.clone();
+            let tx = tx.clone();
+            
+            tokio::spawn(async move {
+                let _permit = semaphore.acquire().await.unwrap();
+                
+                debug!("Validating file: {}", path.display());
+                
+                // Perform validation
+                match validate_file_standalone(&path, &config).await {
+                    Ok(validation) => {
+                        if tx.send(Ok(validation)).is_err() {
+                            debug!("Receiver dropped, stopping validation");
+                        }
+                    }
+                    Err(e) => {
+                        if config.fail_fast {
+                            if tx.send(Err(e)).is_err() {
+                                debug!("Receiver dropped, stopping validation");
+                            }
+                        } else {
+                            warn!("File validation error (continuing): {}", e);
+                        }
+                    }
+                }
+            })
+        }).collect();
+        
+        // Wait for all validation tasks to complete
+        futures::future::join_all(validation_tasks).await;
+        
+        // Close the channel to signal completion
+        drop(tx);
+    });
+    
+    // Convert channel receiver to stream
+    stream::unfold(rx, |mut receiver| async move {
+        receiver.recv().await.map(|result| (result, receiver))
+    })
+}
+
+/// Standalone file validation function for parallel processing
+async fn validate_file_standalone(
+    path: &Path,
+    config: &DiscoveryConfig,
+) -> Result<FileValidation> {
+    // Check if file is accessible
+    match fs::metadata(path).await {
+        Ok(metadata) => {
+            if !metadata.is_file() {
+                let error = format!("Path is not a file: {}", path.display());
+                warn!("{}", error);
+                return Ok(FileValidation {
+                    path: path.to_path_buf(),
+                    is_valid_utf8: false,
+                    error: Some(error),
+                });
+            }
+        }
+        Err(e) => {
+            let error = format!("Cannot access file {}: {}", path.display(), e);
+            warn!("{}", error);
+            
+            if config.fail_fast {
+                return Err(anyhow::anyhow!(error));
+            } else {
+                return Ok(FileValidation {
+                    path: path.to_path_buf(),
+                    is_valid_utf8: false,
+                    error: Some(error),
+                });
+            }
+        }
+    }
+
+    // Validate UTF-8 encoding by reading a sample
+    let is_valid_utf8 = match check_utf8_encoding_standalone(path).await {
+        Ok(valid) => valid,
+        Err(e) => {
+            let error = format!("UTF-8 validation failed for {}: {}", path.display(), e);
+            warn!("{}", error);
+            
+            if config.fail_fast {
+                return Err(anyhow::anyhow!(error));
+            } else {
+                return Ok(FileValidation {
+                    path: path.to_path_buf(),
+                    is_valid_utf8: false,
+                    error: Some(error),
+                });
+            }
+        }
+    };
+
+    Ok(FileValidation {
+        path: path.to_path_buf(),
+        is_valid_utf8,
+        error: None,
+    })
+}
+
+/// Standalone UTF-8 encoding check
+async fn check_utf8_encoding_standalone(path: &Path) -> Result<bool> {
+    // WHY: Reading first 4KB is sufficient to detect encoding issues in most cases
+    const SAMPLE_SIZE: usize = 4096;
+    
+    match fs::read(path).await {
+        Ok(bytes) => {
+            let sample = if bytes.len() > SAMPLE_SIZE {
+                &bytes[..SAMPLE_SIZE]
+            } else {
+                &bytes
+            };
+            
+            match std::str::from_utf8(sample) {
+                Ok(_) => {
+                    debug!("UTF-8 validation passed for: {}", path.display());
+                    Ok(true)
+                }
+                Err(_) => {
+                    debug!("UTF-8 validation failed for: {}", path.display());
+                    Ok(false)
+                }
+            }
+        }
+        Err(e) => {
+            Err(anyhow::anyhow!("Failed to read file for UTF-8 validation: {}", e))
+        }
+    }
 }
 
 /// Internal state for file discovery iteration
@@ -233,6 +401,40 @@ pub async fn collect_discovered_files(
     Ok(files)
 }
 
+/// Collect all discovered files using parallel directory traversal
+/// WHY: Significantly faster for large directory trees with many files
+#[allow(dead_code)]
+pub async fn collect_discovered_files_parallel(
+    root_dir: impl AsRef<Path>,
+    config: DiscoveryConfig,
+) -> Result<Vec<FileValidation>> {
+    let mut files = Vec::new();
+    let mut stream = Box::pin(discover_files_parallel(root_dir, config));
+    
+    while let Some(result) = stream.next().await {
+        match result {
+            Ok(validation) => {
+                files.push(validation);
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        }
+    }
+    
+    info!("Parallel discovery completed: {} files total", files.len());
+    let valid_count = files.iter().filter(|f| f.is_valid_utf8 && f.error.is_none()).count();
+    let invalid_count = files.len() - valid_count;
+    
+    if invalid_count > 0 {
+        warn!("Found {} files with validation issues", invalid_count);
+    }
+    
+    info!("Parallel file discovery summary: {} valid, {} invalid", valid_count, invalid_count);
+    
+    Ok(files)
+}
+
 /// Convenience function to find all valid Gutenberg files (only paths, not validation details)
 /// WHY: Simplifies common use case for integration tests and external callers
 #[allow(dead_code)]
@@ -341,5 +543,85 @@ mod tests {
             // Should fail fast on permission error
             assert!(result.is_err());
         }
+    }
+
+    #[tokio::test]
+    async fn test_parallel_discovery() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = DiscoveryConfig::default();
+        
+        // Create multiple test files
+        create_test_file(temp_dir.path(), "book1-0.txt", "Valid UTF-8 content").await.unwrap();
+        create_test_file(temp_dir.path(), "subdir/book2-0.txt", "More content").await.unwrap();
+        create_test_file(temp_dir.path(), "book3-0.txt", "Third book").await.unwrap();
+        create_test_file(temp_dir.path(), "book-1.txt", "Should not match").await.unwrap();
+        
+        // Test parallel discovery
+        let files = collect_discovered_files_parallel(temp_dir.path(), config).await.unwrap();
+        assert_eq!(files.len(), 3);
+        
+        let valid_files: Vec<_> = files.iter().filter(|f| f.is_valid_utf8 && f.error.is_none()).collect();
+        assert_eq!(valid_files.len(), 3);
+        
+        let file_names: Vec<String> = files.iter()
+            .map(|f| f.path.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert!(file_names.contains(&"book1-0.txt".to_string()));
+        assert!(file_names.contains(&"book2-0.txt".to_string()));
+        assert!(file_names.contains(&"book3-0.txt".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_parallel_vs_serial_discovery() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = DiscoveryConfig::default();
+        
+        // Create test files
+        for i in 0..5 {
+            let file_name = format!("test{i}-0.txt");
+            create_test_file(temp_dir.path(), &file_name, "Test content").await.unwrap();
+        }
+        
+        // Test serial discovery
+        let serial_files = collect_discovered_files(temp_dir.path(), config.clone()).await.unwrap();
+        
+        // Test parallel discovery
+        let parallel_files = collect_discovered_files_parallel(temp_dir.path(), config).await.unwrap();
+        
+        // Should find the same files
+        assert_eq!(serial_files.len(), parallel_files.len());
+        assert_eq!(serial_files.len(), 5);
+        
+        // Sort files by path for comparison
+        let mut serial_paths: Vec<_> = serial_files.iter().map(|f| &f.path).collect();
+        let mut parallel_paths: Vec<_> = parallel_files.iter().map(|f| &f.path).collect();
+        
+        serial_paths.sort();
+        parallel_paths.sort();
+        
+        assert_eq!(serial_paths, parallel_paths);
+    }
+
+    #[tokio::test]
+    async fn test_parallel_discovery_with_invalid_files() {
+        let temp_dir = TempDir::new().unwrap();
+        let config = DiscoveryConfig::default();
+        
+        // Create valid file
+        create_test_file(temp_dir.path(), "valid-0.txt", "Valid content").await.unwrap();
+        
+        // Create invalid UTF-8 file
+        let invalid_path = temp_dir.path().join("invalid-0.txt");
+        std::fs::write(&invalid_path, [0xFF, 0xFE, 0xFD]).unwrap();
+        
+        let files = collect_discovered_files_parallel(temp_dir.path(), config).await.unwrap();
+        assert_eq!(files.len(), 2);
+        
+        let valid_file = files.iter().find(|f| f.path.file_name().unwrap() == "valid-0.txt").unwrap();
+        assert!(valid_file.is_valid_utf8);
+        assert!(valid_file.error.is_none());
+        
+        let invalid_file = files.iter().find(|f| f.path.file_name().unwrap() == "invalid-0.txt").unwrap();
+        assert!(!invalid_file.is_valid_utf8);
     }
 }

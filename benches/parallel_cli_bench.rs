@@ -161,17 +161,17 @@ fn validate_parallel_scaling(results: &[ParallelResult]) {
     
     println!("\n=== Performance Claims Validation ===");
     if improvement_ratio > 1.2 {
-        println!("✅ PARALLEL CLAIM VALIDATED: {:.1}x throughput improvement observed", improvement_ratio);
+        println!("✅ PARALLEL CLAIM VALIDATED: {improvement_ratio:.1}x throughput improvement observed");
     } else {
-        println!("⚠️  PARALLEL CLAIM QUESTIONABLE: Only {:.1}x improvement (expected >1.2x)", improvement_ratio);
+        println!("⚠️  PARALLEL CLAIM QUESTIONABLE: Only {improvement_ratio:.1}x improvement (expected >1.2x)");
     }
     
     // WHY: Validate high-performance claim (>10 MB/s per PRD)
     let max_mb_per_sec = sorted_results.iter().map(|r| r.throughput_mb_per_sec).fold(0.0, f64::max);
     if max_mb_per_sec >= 10.0 {
-        println!("✅ HIGH-PERFORMANCE CLAIM VALIDATED: {:.2} MB/s achieved (≥10 MB/s)", max_mb_per_sec);
+        println!("✅ HIGH-PERFORMANCE CLAIM VALIDATED: {max_mb_per_sec:.2} MB/s achieved (≥10 MB/s)");
     } else {
-        println!("⚠️  HIGH-PERFORMANCE CLAIM NOT MET: {:.2} MB/s achieved (<10 MB/s)", max_mb_per_sec);
+        println!("⚠️  HIGH-PERFORMANCE CLAIM NOT MET: {max_mb_per_sec:.2} MB/s achieved (<10 MB/s)");
     }
 }
 
@@ -211,7 +211,7 @@ fn bench_parallel_cli_processing(c: &mut Criterion) {
         .into_iter()
         .collect::<Vec<_>>();
     
-    println!("Testing concurrency levels: {:?}", concurrency_levels);
+    println!("Testing concurrency levels: {concurrency_levels:?}");
     
     let mut group = c.benchmark_group("parallel_cli_processing");
     group.throughput(Throughput::Bytes(total_chars));
@@ -255,8 +255,8 @@ fn bench_parallel_cli_processing(c: &mut Criterion) {
         let total_files_failed: u64 = validation_results.iter().map(|r| r.files_failed).sum();
         let total_chars: u64 = validation_results.iter().map(|r| r.total_chars).sum();
         let total_sentences: u64 = validation_results.iter().map(|r| r.total_sentences).sum();
-        println!("Summary: {} processed, {} skipped, {} failed files", total_files_processed, total_files_skipped, total_files_failed);
-        println!("Total: {} chars, {} sentences in {:.3}s", total_chars, total_sentences, total_duration.as_secs_f64());
+        println!("Summary: {total_files_processed} processed, {total_files_skipped} skipped, {total_files_failed} failed files");
+        println!("Total: {total_chars} chars, {total_sentences} sentences in {:.3}s", total_duration.as_secs_f64());
     }
 }
 
