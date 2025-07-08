@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use seams::discovery;
-use seams::SentenceDetectorDialog;
+use seams::sentence_detector::dialog_detector::SentenceDetectorDialog;
 use std::path::PathBuf;
 use std::fs::File;
 use memmap2::{MmapOptions, Mmap};
@@ -107,13 +107,17 @@ fn process_files_owned_read(files: &[PathBuf]) -> Result<Vec<FileResult>, Box<dy
         let content = std::fs::read_to_string(file_path)?;
         
         let start = Instant::now();
-        let sentences = detector.detect_sentences_owned(&content)?;
+        // Use borrowed API and convert to owned inline for benchmarking
+        let borrowed_sentences = detector.detect_sentences_borrowed(&content)?;
+        let _owned_sentences: Vec<_> = borrowed_sentences.iter()
+            .map(|s| s.raw_content.to_string())
+            .collect();
         let duration = start.elapsed();
         
         let result = FileResult::new(
             file_path.clone(),
             content.chars().count(),
-            sentences.len(),
+            borrowed_sentences.len(),
             duration,
         );
         

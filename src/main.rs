@@ -11,17 +11,9 @@ use tracing::info;
 mod discovery;
 mod reader;
 mod sentence_detector;
+mod incremental;
 
-/// Generate auxiliary file path from source file path
-/// WHY: Follows PRD F-7 specification for aux file naming
-fn generate_aux_file_path(source_path: &Path) -> PathBuf {
-    let mut aux_path = source_path.to_path_buf();
-    let file_stem = aux_path.file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("unknown");
-    aux_path.set_file_name(format!("{file_stem}_seams.txt"));
-    aux_path
-}
+use crate::incremental::{generate_aux_file_path, generate_cache_path};
 
 /// Cache for tracking completed auxiliary files
 /// WHY: Provides robust incremental processing by tracking completion timestamps
@@ -101,11 +93,6 @@ impl ProcessingCache {
     }
 }
 
-/// Generate cache file path for given root directory
-/// WHY: Consistent cache location that's easy to find and delete
-fn generate_cache_path(root_dir: &Path) -> PathBuf {
-    root_dir.join(".seams_cache.json")
-}
 
 /// Determine if file should be processed based on cache and incremental rules
 /// WHY: Implements core F-9 logic using robust timestamp-based cache

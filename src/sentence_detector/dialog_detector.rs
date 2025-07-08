@@ -6,7 +6,7 @@ use regex_automata::{meta::Regex, Input};
 use std::collections::HashMap;
 use tracing::{debug, info};
 
-use super::{DetectedSentence, DetectedSentenceBorrowed, DetectedSentenceOwned, Span, AbbreviationChecker};
+use super::{DetectedSentence, DetectedSentenceBorrowed, Span, AbbreviationChecker};
 
 // Type-safe position wrappers to prevent byte/char and 0/1-based confusion
 
@@ -180,7 +180,6 @@ pub enum DialogState {
 pub struct DialogDetectedSentence {
     pub start_byte: BytePos,  // Added for O(1) borrowed API
     pub end_byte: BytePos,    // Added for O(1) borrowed API
-    pub content: String,
     pub start_line: OneBasedLine,
     pub start_col: OneBasedCol,
     pub end_line: OneBasedLine,
@@ -447,7 +446,6 @@ impl DialogStateMachine {
                                     sentences.push(DialogDetectedSentence {
                                         start_byte: sentence_start_byte,
                                         end_byte: sentence_end_byte,
-                                        content,
                                         start_line,
                                         start_col,
                                         end_line,
@@ -488,7 +486,6 @@ impl DialogStateMachine {
                                 sentences.push(DialogDetectedSentence {
                                     start_byte: sentence_start_byte,
                                     end_byte: sentence_end_byte,
-                                    content,
                                     start_line,
                                     start_col,
                                     end_line,
@@ -524,7 +521,6 @@ impl DialogStateMachine {
                                 sentences.push(DialogDetectedSentence {
                                     start_byte: sentence_start_byte,
                                     end_byte: match_start_byte,
-                                    content,
                                     start_line,
                                     start_col,
                                     end_line,
@@ -554,7 +550,6 @@ impl DialogStateMachine {
                         sentences.push(DialogDetectedSentence {
                             start_byte: sentence_start_byte,
                             end_byte: BytePos::new(text.len()),
-                            content,
                             start_line,
                             start_col,
                             end_line,
@@ -581,7 +576,6 @@ impl DialogStateMachine {
                 sentences.push(DialogDetectedSentence {
                     start_byte: sentence_start_byte,
                     end_byte: BytePos::new(text.len()),
-                    content,
                     start_line,
                     start_col,
                     end_line,
@@ -808,21 +802,6 @@ impl SentenceDetectorDialog {
         Ok(borrowed_sentences)
     }
 
-    /// Detect sentences with owned API (async I/O-friendly)
-    pub fn detect_sentences_owned(&self, text: &str) -> Result<Vec<DetectedSentenceOwned>> {
-        let borrowed_sentences = self.detect_sentences_borrowed(text)?;
-        
-        let owned_sentences = borrowed_sentences
-            .into_iter()
-            .map(|borrowed| DetectedSentenceOwned {
-                index: borrowed.index,
-                raw_content: borrowed.raw_content.to_string(),
-                span: borrowed.span,
-            })
-            .collect();
-            
-        Ok(owned_sentences)
-    }
 
     /// Legacy API for backward compatibility
     pub fn detect_sentences(&self, text: &str) -> Result<Vec<DetectedSentence>> {
@@ -860,8 +839,8 @@ mod tests {
         let sentences = detector.detect_sentences_borrowed(text).unwrap();
         
         assert_eq!(sentences.len(), 2);
-        assert!(sentences[0].raw().contains("This is a sentence"));
-        assert!(sentences[1].raw().contains("This is another sentence"));
+        assert!(sentences[0].raw_content.contains("This is a sentence"));
+        assert!(sentences[1].raw_content.contains("This is another sentence"));
     }
 
     #[test]
@@ -871,26 +850,10 @@ mod tests {
         let sentences = detector.detect_sentences_borrowed(text).unwrap();
         
         assert_eq!(sentences.len(), 2);
-        assert!(sentences[0].raw().contains("Stop her, sir! Ting-a-ling-ling!"));
-        assert!(sentences[1].raw().contains("The headway ran almost out"));
+        assert!(sentences[0].raw_content.contains("Stop her, sir! Ting-a-ling-ling!"));
+        assert!(sentences[1].raw_content.contains("The headway ran almost out"));
     }
 
-    #[test]
-    fn test_dual_api_equivalence() {
-        let detector = get_detector();
-        let text = "Hello world. This is a test. How are you?";
-        
-        let borrowed_result = detector.detect_sentences_borrowed(text).unwrap();
-        let owned_result = detector.detect_sentences_owned(text).unwrap();
-        
-        assert_eq!(borrowed_result.len(), owned_result.len());
-        
-        for (borrowed, owned) in borrowed_result.iter().zip(owned_result.iter()) {
-            assert_eq!(borrowed.index, owned.index);
-            assert_eq!(borrowed.raw(), owned.raw());
-            assert_eq!(borrowed.span, owned.span);
-        }
-    }
 
     #[test]
     fn test_abbreviation_handling() {
@@ -915,15 +878,15 @@ mod tests {
             assert_eq!(sentences.len(), expected_count, "Failed for text: {}", text);
             
             for (i, expected) in expected_content.iter().enumerate() {
-                assert!(sentences[i].raw().contains(expected), 
-                    "Sentence {} should contain '{}' but got '{}'", i, expected, sentences[i].raw());
+                assert!(sentences[i].raw_content.contains(expected), 
+                    "Sentence {} should contain '{}' but got '{}'", i, expected, sentences[i].raw_content);
             }
         }
         
         // Additional validation: ensure "Dr." is not treated as sentence boundary
         let text = "Dr. Smith examined the patient. The results were clear.";
         let sentences = detector.detect_sentences_borrowed(text).unwrap();
-        assert!(!sentences[0].raw().trim().ends_with("Dr."), "Dr. should not end a sentence when followed by a name");
+        assert!(!sentences[0].raw_content.trim().ends_with("Dr."), "Dr. should not end a sentence when followed by a name");
     }
 
 
@@ -936,7 +899,7 @@ mod tests {
         let sentences = detector.detect_sentences_borrowed(text).unwrap();
         // Should be one sentence - soft transition should continue
         assert_eq!(sentences.len(), 1, "Soft transition with comma should continue sentence");
-        assert!(sentences[0].raw().contains("Hello") && sentences[0].raw().contains("she said"));
+        assert!(sentences[0].raw_content.contains("Hello") && sentences[0].raw_content.contains("she said"));
         
         // Test case 2: quote alone should soft transition
         let text = "\"Yes\" followed by more narrative.";
@@ -960,8 +923,8 @@ mod tests {
         let sentences = detector.detect_sentences_borrowed(text).unwrap();
         // Should be two sentences - hard transition should create boundary
         assert_eq!(sentences.len(), 2, "Hard transition should create sentence boundary");
-        assert!(sentences[0].raw().contains("Wait!") && sentences[0].raw().contains("he shouted"));
-        assert!(sentences[1].raw().contains("Then he left"));
+        assert!(sentences[0].raw_content.contains("Wait!") && sentences[0].raw_content.contains("he shouted"));
+        assert!(sentences[1].raw_content.contains("Then he left"));
     }
 
     #[test]
@@ -981,11 +944,11 @@ She did not finish, for by this time she was bending down and punching under the
         assert_eq!(sentences.len(), 2, "Colon + paragraph break + dialog should create sentence boundary");
         
         // First sentence should include the dialog
-        assert!(sentences[0].raw().contains("furniture to hear:"));
-        assert!(sentences[0].raw().contains("Well, I lay if I get hold of you I'll—"));
+        assert!(sentences[0].raw_content.contains("furniture to hear:"));
+        assert!(sentences[0].raw_content.contains("Well, I lay if I get hold of you I'll—"));
         
         // Second sentence should be the narrative continuation
-        assert!(sentences[1].raw().contains("She did not finish"));
+        assert!(sentences[1].raw_content.contains("She did not finish"));
     }
 
     #[test]

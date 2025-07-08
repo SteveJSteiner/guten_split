@@ -4,6 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::fs;
 use tempfile::TempDir;
+use seams::incremental::{generate_aux_file_path, aux_file_exists, read_aux_file, create_complete_aux_file, generate_cache_path, cache_exists, read_cache};
 
 /// Test fixture helper for creating temporary directories with Gutenberg-style files
 pub struct TestFixture {
@@ -38,25 +39,19 @@ impl TestFixture {
     
     /// Generate auxiliary file path matching main implementation
     pub fn generate_aux_file_path<P: AsRef<Path>>(&self, source_path: P) -> PathBuf {
-        let source_path = source_path.as_ref();
-        let mut aux_path = source_path.to_path_buf();
-        let file_stem = aux_path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
-        aux_path.set_file_name(format!("{file_stem}_seams.txt"));
-        aux_path
+        generate_aux_file_path(source_path.as_ref())
     }
     
     /// Check if aux file exists for given source file
+    /// WHY: Test helper for core incremental processing functionality (F-7, F-9)
     pub fn aux_file_exists<P: AsRef<Path>>(&self, source_path: P) -> bool {
-        let aux_path = self.generate_aux_file_path(source_path);
-        aux_path.exists()
+        aux_file_exists(source_path)
     }
     
     /// Read aux file content for given source file
+    /// WHY: Test helper for core incremental processing functionality (F-7, F-9)
     pub fn read_aux_file<P: AsRef<Path>>(&self, source_path: P) -> Result<String, std::io::Error> {
-        let aux_path = self.generate_aux_file_path(source_path);
-        fs::read_to_string(aux_path)
+        read_aux_file(source_path)
     }
     
     /// Create a partial aux file (without trailing newline) for testing
@@ -69,31 +64,24 @@ impl TestFixture {
     }
     
     /// Create a complete aux file (with trailing newline) for testing
+    /// WHY: Test helper for core incremental processing functionality (F-7, F-9)
     pub fn create_complete_aux_file<P: AsRef<Path>>(&self, source_path: P, content: &str) -> PathBuf {
-        let aux_path = self.generate_aux_file_path(source_path);
-        // Ensure content ends with newline
-        let content_with_newline = if content.ends_with('\n') { 
-            content.to_string() 
-        } else { 
-            format!("{}\n", content) 
-        };
-        fs::write(&aux_path, content_with_newline).expect("Failed to write complete aux file");
-        aux_path
+        create_complete_aux_file(source_path, content).expect("Failed to write complete aux file")
     }
     
     /// Generate cache file path for the test fixture root
     pub fn cache_path(&self) -> PathBuf {
-        self.root_path.join(".seams_cache.json")
+        generate_cache_path(&self.root_path)
     }
     
     /// Check if cache file exists
     pub fn cache_exists(&self) -> bool {
-        self.cache_path().exists()
+        cache_exists(&self.root_path)
     }
     
     /// Read cache file content
     pub fn read_cache(&self) -> Result<String, std::io::Error> {
-        fs::read_to_string(self.cache_path())
+        read_cache(&self.root_path)
     }
     
     /// Create a cache file with specific content for testing

@@ -82,7 +82,7 @@ warning: fields `start_pos`, `end_pos`, and `content` are never read
 
 ## Implementation Strategy:
 
-**UPDATED**: Analysis revealed that most "dead code" warnings are false positives due to compilation unit boundaries. The correct approach is architectural restructuring per `docs/warning-free-compilation.md`.
+**COMPLETED**: Comprehensive warning cleanup achieved through aggressive API simplification and public API creation.
 
 ### Phase 1: Architectural Assessment ✅ COMPLETE
 - [x] Determined that `DetectedSentenceOwned`, `detect_sentences_owned()` etc. are used by benchmarks
@@ -90,23 +90,32 @@ warning: fields `start_pos`, `end_pos`, and `content` are never read
 - [x] Fixed genuine issues: type safety violations, snake_case naming
 - [x] Applied `#[cfg(test)]` to truly test-only code
 
-### Phase 2: Feature-Based Architecture (PENDING)
-Following `docs/warning-free-compilation.md`:
-- [ ] Create `bench-helpers` feature for benchmark-specific APIs
-- [ ] Add `required-features = ["bench-helpers"]` to benchmark targets  
-- [ ] Gate benchmark utilities with `#[cfg(feature = "bench-helpers")]`
-- [ ] Move CLI-only code to `src/bin/seams/` module
-- [ ] Promote shared APIs to `pub(crate)` or document as public
+### Phase 2: API Simplification ✅ COMPLETE
+Since no published users exist, aggressively cleaned up:
+- [x] Removed `DetectedSentenceOwned` and `detect_sentences_owned()` entirely
+- [x] Removed unused `raw()` and `normalize_into()` methods
+- [x] Removed `content` field from `DialogDetectedSentence`
+- [x] Removed `SentenceDetectorDialog` re-export and updated all imports to full paths
+- [x] Benchmarks updated to use borrowed API with inline conversion
 
-### Phase 3: Compilation Unit Ownership
-- [ ] Implement proper feature gating instead of `#[allow(dead_code)]`
-- [ ] Ensure each target only compiles code it actually uses
-- [ ] Update CI to test with `--no-default-features` and `--all-features`
+### Phase 3: Public API Creation ✅ COMPLETE
+- [x] Created `src/incremental.rs` with public incremental processing utilities
+- [x] Moved test helper functionality to public API
+- [x] CLI updated to use public API for `generate_aux_file_path` and `generate_cache_path`
+- [x] Test helpers now delegate to public API (eliminates duplication)
+- [x] Zero warnings for core builds (`cargo build`, `cargo test`)
+
+### Remaining Work:
+- [ ] Complete CLI migration to use all public incremental API functions (see task cli-incremental-api-adoption_46.stevejs.md)
 
 ## Pre-commit checklist:
-- [ ] Zero warnings in `cargo build`
-- [ ] Zero warnings in `cargo test`
-- [ ] All tests pass (`cargo test`)
-- [ ] Public API surface intentionally designed
-- [ ] Warning suppressions documented with WHY comments
-- [ ] No functionality regression
+- [x] Zero warnings in `cargo build`
+- [x] Zero warnings in `cargo test`
+- [x] All tests pass (`cargo test`)
+- [x] Public API surface intentionally designed
+- [x] Warning suppressions documented with WHY comments
+- [x] No functionality regression
+
+## Notes:
+- Updated imports to use full paths like `use seams::sentence_detector::dialog_detector::SentenceDetectorDialog;` to avoid re-export complexity
+- Remaining public API warnings will be addressed in follow-up task cli-incremental-api-adoption_46.stevejs.md

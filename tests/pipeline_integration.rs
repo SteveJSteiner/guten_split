@@ -4,10 +4,10 @@ use std::fs;
 use std::sync::OnceLock;
 
 // WHY: Single shared detector instance reduces test overhead from multiple instantiations
-static SHARED_DETECTOR: OnceLock<sentence_detector::SentenceDetectorDialog> = OnceLock::new();
+static SHARED_DETECTOR: OnceLock<sentence_detector::dialog_detector::SentenceDetectorDialog> = OnceLock::new();
 
-fn get_detector() -> &'static sentence_detector::SentenceDetectorDialog {
-    SHARED_DETECTOR.get_or_init(|| sentence_detector::SentenceDetectorDialog::new().unwrap())
+fn get_detector() -> &'static sentence_detector::dialog_detector::SentenceDetectorDialog {
+    SHARED_DETECTOR.get_or_init(|| sentence_detector::dialog_detector::SentenceDetectorDialog::new().unwrap())
 }
 
 /// Test sentence detection pipeline on simple text

@@ -7,8 +7,7 @@ pub mod dialog_detector;
 pub mod abbreviations;
 
 // Re-export core types
-pub use normalization::{normalize_sentence, normalize_sentence_into};
-pub use dialog_detector::SentenceDetectorDialog;
+pub use normalization::normalize_sentence;
 pub use abbreviations::AbbreviationChecker;
 
 /// Position in a text file using 1-based indexing as specified in PRD section 2
@@ -30,46 +29,12 @@ pub struct DetectedSentenceBorrowed<'a> {
 }
 
 impl<'a> DetectedSentenceBorrowed<'a> {
-    /// Get raw content without normalization
-    pub fn raw(&self) -> &str {
-        self.raw_content
-    }
-    
     /// Normalize content with new allocation
     pub fn normalize(&self) -> String {
         normalize_sentence(self.raw_content)
     }
-    
-    /// Normalize content into supplied buffer (zero allocation)
-    pub fn normalize_into(&self, buffer: &mut String) {
-        normalize_sentence_into(self.raw_content, buffer);
-    }
 }
 
-/// Owned variant - convenience for async I/O scenarios
-#[derive(Debug, Clone)]
-pub struct DetectedSentenceOwned {
-    pub index: usize,
-    pub raw_content: String,  // Owned copy
-    pub span: Span,
-}
-
-impl DetectedSentenceOwned {
-    /// Get raw content without normalization
-    pub fn raw(&self) -> &str {
-        &self.raw_content
-    }
-    
-    /// Normalize content with new allocation
-    pub fn normalize(&self) -> String {
-        normalize_sentence(&self.raw_content)
-    }
-    
-    /// Normalize content into supplied buffer (zero allocation)
-    pub fn normalize_into(&self, buffer: &mut String) {
-        normalize_sentence_into(&self.raw_content, buffer);
-    }
-}
 
 /// Legacy struct for backward compatibility - will be deprecated
 #[derive(Debug, Clone)]
