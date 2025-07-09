@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::SystemTime;
 use tracing::info;
-use num_cpus::get as num_cpus_get;
 
 mod discovery;
 mod sentence_detector;
@@ -71,7 +70,7 @@ async fn process_with_overlapped_pipeline(
     let mut processing_results = Vec::new();
     
     // WHY: Use bounded concurrency to prevent resource exhaustion
-    let max_concurrent = num_cpus_get().min(8);
+    let max_concurrent = (num_cpus::get() / 2).max(1);
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
     let detector = Arc::new(
         crate::sentence_detector::dialog_detector::SentenceDetectorDialog::new()
@@ -116,6 +115,7 @@ async fn process_with_overlapped_pipeline(
                             chars_processed: 0,
                             sentences_detected: 0,
                             processing_time_ms: 0,
+                            sentence_detection_time_ms: 0,
                             chars_per_sec: 0.0,
                             status: "skipped".to_string(),
                             error: None,
@@ -201,6 +201,7 @@ async fn process_with_overlapped_pipeline(
                     chars_processed: 0,
                     sentences_detected: 0,
                     processing_time_ms: 0,
+                    sentence_detection_time_ms: 0,
                     chars_per_sec: 0.0,
                     status: "failed".to_string(),
                     error: Some(e.to_string()),
@@ -265,7 +266,22 @@ async fn process_with_overlapped_pipeline(
         if total_bytes > 0 && processing_duration.as_secs_f64() > 0.0 {
             let throughput_chars_per_sec = total_bytes as f64 / processing_duration.as_secs_f64();
             let throughput_mb_per_sec = throughput_chars_per_sec / 1_000_000.0;
-            println!("  Throughput: {throughput_chars_per_sec:.0} chars/sec ({throughput_mb_per_sec:.2} MB/s)");
+            println!("  Overall throughput: {throughput_chars_per_sec:.0} chars/sec ({throughput_mb_per_sec:.2} MB/s)");
+            
+            // WHY: Show sentence detection throughput for just the detection algorithm
+            let total_sentence_detection_time_ms: u64 = file_stats.iter()
+                .map(|fs| fs.sentence_detection_time_ms)
+                .sum();
+            
+            if total_sentence_detection_time_ms > 0 && total_sentences > 0 {
+                let sentence_detection_time_sec = total_sentence_detection_time_ms as f64 / 1000.0;
+                let sentence_detection_throughput_chars_per_sec = total_bytes as f64 / sentence_detection_time_sec;
+                let sentence_detection_throughput_mb_per_sec = sentence_detection_throughput_chars_per_sec / 1_000_000.0;
+                println!("  Sentence detection throughput: {sentence_detection_throughput_chars_per_sec:.0} chars/sec ({sentence_detection_throughput_mb_per_sec:.2} MB/s)");
+                println!("  Sentence detection time: {sentence_detection_time_sec:.2}s of {:.2}s total ({:.1}%)", 
+                         processing_duration.as_secs_f64(), 
+                         (sentence_detection_time_sec / processing_duration.as_secs_f64()) * 100.0);
+            }
         }
         
         info!("Overlapped pipeline completed: {} processed, {} skipped, {} failed, {} sentences detected", 
@@ -289,8 +305,12 @@ async fn process_single_file_restart(
     let mmap = unsafe { memmap2::MmapOptions::new().map(&file)? };
     let content = std::str::from_utf8(&mmap)
         .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in file: {}", path.display()))?;
-    
+
+    // WHY: Measure sentence detection time separately from total processing time
+    let sentence_detection_start = std::time::Instant::now();
     let sentences = detector.detect_sentences_borrowed(content)?;
+    let sentence_detection_time = sentence_detection_start.elapsed();
+    
     let sentence_count = sentences.len() as u64;
     let byte_count = content.len() as u64;
     
@@ -311,13 +331,21 @@ async fn process_single_file_restart(
         chars_processed: byte_count,
         sentences_detected: sentence_count,
         processing_time_ms,
+        sentence_detection_time_ms: sentence_detection_time.as_millis() as u64,
         chars_per_sec,
         status: "success".to_string(),
         error: None,
     };
     
-    info!("Processed {}: {} sentences, {} bytes", path.display(), sentence_count, byte_count);
-    
+    //info!("Processed {}: {} sentences, {} bytes", path.display(), sentence_count, byte_count);
+    let detection_ms = sentence_detection_time.as_millis();
+    println!(
+        "[Processed {}: {} sentences, {} bytes, detection {} ms",
+        path.display(),
+        sentence_count,
+        byte_count,
+        detection_ms
+    );
     Ok((sentence_count, byte_count, 1u64, false, file_stats))
 }
 

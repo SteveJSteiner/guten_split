@@ -20,6 +20,8 @@ pub struct FileStats {
     pub sentences_detected: u64,
     /// Processing time in milliseconds
     pub processing_time_ms: u64,
+    /// Sentence detection time in milliseconds (subset of processing_time_ms)
+    pub sentence_detection_time_ms: u64,
     /// Throughput in characters per second
     pub chars_per_sec: f64,
     /// Processing status (success, skipped, failed)

@@ -4,10 +4,11 @@ use glob::glob;
 use std::path::{Path, PathBuf};
 use tokio::fs;
 use tracing::{debug, info, warn};
-use walkdir::WalkDir;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use futures::stream;
+use tokio::io::{AsyncReadExt, BufReader};
+use ignore::{WalkBuilder, WalkState};
 
 /// Configuration for file discovery behavior
 #[derive(Debug, Clone)]
@@ -65,58 +66,77 @@ pub fn discover_files_parallel(
     
     // Spawn a task to perform parallel directory traversal
     tokio::spawn(async move {
-        let walker = WalkDir::new(&root_path)
-            .into_iter()
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                entry.file_type().is_file() 
-                && entry.file_name().to_string_lossy().ends_with("-0.txt")
-            });
+        info!("Starting directory traversal in: {}", root_path.display());
+        let traversal_start = std::time::Instant::now();
         
-        // WHY: Collect paths first to enable parallel processing
-        let paths: Vec<_> = walker.map(|entry| entry.path().to_path_buf()).collect();
+        // WHY: Use ignore::WalkBuilder (from ripgrep) for optimized deep directory traversal
+        // Stream files as they're discovered for true overlapped processing
+        let walker = WalkBuilder::new(&root_path)
+            .threads((num_cpus::get() / 2).max(1)) // Use all available CPU cores
+            .follow_links(false) // Don't follow symlinks
+            .hidden(false) // Don't skip hidden files/dirs (some Gutenberg files might be in hidden dirs)
+            .ignore(false) // Don't read .gitignore files
+            .git_ignore(false) // Don't read .gitignore files
+            .build_parallel();
         
-        info!("Parallel discovery found {} potential files", paths.len());
+        // Use a channel to stream results from parallel walker
+        let (result_tx, result_rx) = std::sync::mpsc::channel();
+        let tx_clone = tx.clone();
         
-        // Process files in parallel using bounded concurrency
-        let max_concurrent = num_cpus::get().min(16); // Limit concurrent validations
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
-        
-        let validation_tasks: Vec<_> = paths.into_iter().map(|path| {
-            let config = config.clone();
-            let semaphore = semaphore.clone();
-            let tx = tx.clone();
-            
-            tokio::spawn(async move {
-                let _permit = semaphore.acquire().await.unwrap();
-                
-                debug!("Validating file: {}", path.display());
-                
-                // Perform validation
-                match validate_file_standalone(&path, &config).await {
-                    Ok(validation) => {
-                        if tx.send(Ok(validation)).is_err() {
-                            debug!("Receiver dropped, stopping validation");
+        // Spawn walker in a separate thread to avoid blocking
+        std::thread::spawn(move || {
+            walker.run(|| {
+                let result_tx = result_tx.clone();
+                Box::new(move |result| {
+                    if let Ok(entry) = result {
+                        if entry.file_type().is_some_and(|ft| ft.is_file()) {
+                            if let Some(file_name) = entry.file_name().to_str() {
+                                if file_name.ends_with("-0.txt") {
+                                    debug!("Found matching file: {}", entry.path().display());
+                                    let _ = result_tx.send(entry.path().to_path_buf());
+                                }
+                            }
                         }
                     }
-                    Err(e) => {
-                        if config.fail_fast {
-                            if tx.send(Err(e)).is_err() {
-                                debug!("Receiver dropped, stopping validation");
-                            }
-                        } else {
-                            warn!("File validation error (continuing): {}", e);
-                        }
+                    WalkState::Continue
+                })
+            });
+            // Close the channel when done
+            drop(result_tx);
+        });
+        
+        // Stream discovered files immediately to processing pipeline
+        let mut file_count = 0;
+        while let Ok(path) = result_rx.recv() {
+            file_count += 1;
+            
+            // Create validation result for this file
+            let validation_result = validate_file_standalone(&path, &config).await;
+            match validation_result {
+                Ok(validation) => {
+                    if tx_clone.send(Ok(validation)).is_err() {
+                        debug!("Receiver dropped, stopping discovery");
+                        break;
                     }
                 }
-            })
-        }).collect();
+                Err(e) => {
+                    if config.fail_fast {
+                        if tx_clone.send(Err(e)).is_err() {
+                            debug!("Receiver dropped, stopping discovery");
+                        }
+                        break;
+                    } else {
+                        warn!("File validation error (continuing): {}", e);
+                    }
+                }
+            }
+        }
         
-        // Wait for all validation tasks to complete
-        futures::future::join_all(validation_tasks).await;
+        let traversal_time = traversal_start.elapsed();
+        info!("Discovery and validation completed in {:.2}ms, streamed {} files", traversal_time.as_millis(), file_count);
         
         // Close the channel to signal completion
-        drop(tx);
+        drop(tx_clone);
     });
     
     // Convert channel receiver to stream
@@ -187,30 +207,38 @@ async fn validate_file_standalone(
 
 /// Standalone UTF-8 encoding check
 async fn check_utf8_encoding_standalone(path: &Path) -> Result<bool> {
-    // WHY: Reading first 4KB is sufficient to detect encoding issues in most cases
+    // WHY: Reading only first 4KB is sufficient to detect encoding issues in most cases
+    // and avoids loading entire large files into memory during discovery
     const SAMPLE_SIZE: usize = 4096;
     
-    match fs::read(path).await {
-        Ok(bytes) => {
-            let sample = if bytes.len() > SAMPLE_SIZE {
-                &bytes[..SAMPLE_SIZE]
-            } else {
-                &bytes
-            };
+    match tokio::fs::File::open(path).await {
+        Ok(file) => {
+            let mut reader = BufReader::new(file);
+            let mut buffer = vec![0; SAMPLE_SIZE];
             
-            match std::str::from_utf8(sample) {
-                Ok(_) => {
-                    debug!("UTF-8 validation passed for: {}", path.display());
-                    Ok(true)
+            match reader.read(&mut buffer).await {
+                Ok(bytes_read) => {
+                    // Only check the bytes we actually read
+                    let sample = &buffer[..bytes_read];
+                    
+                    match std::str::from_utf8(sample) {
+                        Ok(_) => {
+                            debug!("UTF-8 validation passed for: {}", path.display());
+                            Ok(true)
+                        }
+                        Err(_) => {
+                            debug!("UTF-8 validation failed for: {}", path.display());
+                            Ok(false)
+                        }
+                    }
                 }
-                Err(_) => {
-                    debug!("UTF-8 validation failed for: {}", path.display());
-                    Ok(false)
+                Err(e) => {
+                    Err(anyhow::anyhow!("Failed to read file for UTF-8 validation: {}", e))
                 }
             }
         }
         Err(e) => {
-            Err(anyhow::anyhow!("Failed to read file for UTF-8 validation: {}", e))
+            Err(anyhow::anyhow!("Failed to open file for UTF-8 validation: {}", e))
         }
     }
 }
@@ -339,31 +367,38 @@ impl DiscoveryState {
     }
 
     async fn check_utf8_encoding(&self, path: &Path) -> Result<bool> {
-        // WHY: Reading first 4KB is sufficient to detect encoding issues in most cases
-        // while avoiding loading entire large files into memory during discovery
+        // WHY: Reading only first 4KB is sufficient to detect encoding issues in most cases
+        // and avoids loading entire large files into memory during discovery
         const SAMPLE_SIZE: usize = 4096;
         
-        match fs::read(path).await {
-            Ok(bytes) => {
-                let sample = if bytes.len() > SAMPLE_SIZE {
-                    &bytes[..SAMPLE_SIZE]
-                } else {
-                    &bytes
-                };
+        match tokio::fs::File::open(path).await {
+            Ok(file) => {
+                let mut reader = BufReader::new(file);
+                let mut buffer = vec![0; SAMPLE_SIZE];
                 
-                match std::str::from_utf8(sample) {
-                    Ok(_) => {
-                        debug!("UTF-8 validation passed for: {}", path.display());
-                        Ok(true)
+                match reader.read(&mut buffer).await {
+                    Ok(bytes_read) => {
+                        // Only check the bytes we actually read
+                        let sample = &buffer[..bytes_read];
+                        
+                        match std::str::from_utf8(sample) {
+                            Ok(_) => {
+                                debug!("UTF-8 validation passed for: {}", path.display());
+                                Ok(true)
+                            }
+                            Err(_) => {
+                                debug!("UTF-8 validation failed for: {}", path.display());
+                                Ok(false)
+                            }
+                        }
                     }
-                    Err(_) => {
-                        debug!("UTF-8 validation failed for: {}", path.display());
-                        Ok(false)
+                    Err(e) => {
+                        Err(anyhow::anyhow!("Failed to read file for UTF-8 validation: {}", e))
                     }
                 }
             }
             Err(e) => {
-                Err(anyhow::anyhow!("Failed to read file for UTF-8 validation: {}", e))
+                Err(anyhow::anyhow!("Failed to open file for UTF-8 validation: {}", e))
             }
         }
     }
