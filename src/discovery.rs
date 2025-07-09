@@ -226,9 +226,10 @@ async fn check_utf8_encoding_standalone(path: &Path) -> Result<bool> {
                             debug!("UTF-8 validation passed for: {}", path.display());
                             Ok(true)
                         }
-                        Err(_) => {
-                            debug!("UTF-8 validation failed for: {}", path.display());
-                            Ok(false)
+                        Err(e) => {
+                            let error_msg = format!("UTF-8 validation failed for {}: {}", path.display(), e);
+                            debug!("{}", error_msg);
+                            Err(anyhow::anyhow!(error_msg))
                         }
                     }
                 }
