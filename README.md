@@ -1,6 +1,6 @@
 # Seams - Lightning-fast detection of natural breaks in narrative text
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
 Splits large text corpora into meaningful sentences while preserving narrative flow and dialog structure.
 
