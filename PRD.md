@@ -46,7 +46,7 @@ F-10	Respect --fail_fast: abort entire run on first I/O/UTF-8/DFA error.
 
 Category	Requirement
 Tech Stack	Rust (2021 edition); sentence DFA via regex-automata crate; built with cargo --release. See architecture documentation for implementation details.
-Performance	≥ 50 MB/s sustained throughput including all processing steps; target 1 GB/s; ≤ 30% single-core CPU when I/O-bound.
+Performance	Demonstrably faster than established Python alternatives (pysbd, spaCy sentencizer) on equivalent hardware; throughput benchmarks documented with hardware specifications.
 Scalability	Should saturate multiple cores using Tokio’s work-stealing scheduler.
 Portability	Linux (x86-64, aarch64) and Windows 10+.
 Reliability	Deterministic output; idempotent reruns.
@@ -112,7 +112,7 @@ Python API design TBD - see task python-api-design-strategy_54.stevejs.md for cu
 
 13.1 Publication Goals
 	•	Technical Showcase: Demonstrate high-performance text processing implementation
-	•	Performance Leadership: Demonstrate >200M characters/sec throughput with benchmarks validated on every checkin
+	•	Performance Leadership: Demonstrate superior throughput vs. established Python alternatives (pysbd, spaCy sentencizer) with hardware-contextualized benchmarks validated on every checkin
 	•	Cold Start Performance: Showcase superior initialization performance compared to existing solutions
 	•	Learning Documentation: Document Rust implementation journey as adaptation/problem-solving demonstration
 	•	Narrative Processing Optimization: Highlight specialization for narrative sentences requiring spans from original documents
@@ -124,7 +124,7 @@ R-1	Top-level README optimized for target audience (see separate task)
 R-2	LICENSE file (MIT license)
 R-3	CONTRIBUTING.md with minimal guidelines: "fork it, ping me"
 R-4	Architecture documentation explaining async approach and sentence detection algorithm design
-R-5	Performance benchmarks validated on every checkin (>30M chars/sec)
+R-5	Performance benchmarks validated on every checkin with hardware specifications and comparative methodology documented
 R-6	Example workflows for narrative analysis pipeline integration
 
 13.3 CLI-First User Experience

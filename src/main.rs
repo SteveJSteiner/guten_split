@@ -62,6 +62,7 @@ async fn process_with_overlapped_pipeline(
     info!("Starting overlapped file discovery and processing in: {}", args.root_dir.display());
     
     let fail_fast = args.fail_fast;
+    let quiet = args.quiet;
     let mut discovery_stream = Box::pin(discovery::discover_files_parallel(&args.root_dir, discovery_config));
     let mut discovered_files = Vec::new();
     let mut valid_files = Vec::new();
@@ -102,6 +103,7 @@ async fn process_with_overlapped_pipeline(
                                 &path,
                                 &detector_clone,
                                 overwrite_all,
+                                quiet,
                             ).await
                         });
                         
@@ -233,10 +235,12 @@ async fn process_with_overlapped_pipeline(
         }
     }
     
-    println!("seams v{} - Overlapped discovery and processing complete", env!("CARGO_PKG_VERSION"));
-    println!("Found {} files matching pattern *-0.txt", discovered_files.len());
-    println!("Valid files: {}, Files with issues: {}", valid_files.len(), invalid_files.len());
-    println!("Restart log: {} files tracked as completed", restart_log.completed_count());
+    if !quiet {
+        println!("seams v{} - Overlapped discovery and processing complete", env!("CARGO_PKG_VERSION"));
+        println!("Found {} files matching pattern *-0.txt", discovered_files.len());
+        println!("Valid files: {}, Files with issues: {}", valid_files.len(), invalid_files.len());
+        println!("Restart log: {} files tracked as completed", restart_log.completed_count());
+    }
     
     // WHY: Demonstrate public API usage for external developers (minimal example)
     if std::env::var("SEAMS_DEBUG_API").is_ok() && !valid_files.is_empty() {
@@ -247,7 +251,7 @@ async fn process_with_overlapped_pipeline(
         }
     }
     
-    if !valid_files.is_empty() {
+    if !quiet && !valid_files.is_empty() {
         println!("File processing complete:");
         println!("  Successfully processed: {processed_files} files");
         if skipped_files > 0 {
@@ -281,10 +285,10 @@ async fn process_with_overlapped_pipeline(
                          (sentence_detection_time_sec / processing_duration.as_secs_f64()) * 100.0);
             }
         }
-        
-        info!("Overlapped pipeline completed: {} processed, {} skipped, {} failed, {} sentences detected", 
-              processed_files, skipped_files, failed_files, total_sentences);
     }
+        
+    info!("Overlapped pipeline completed: {} processed, {} skipped, {} failed, {} sentences detected", 
+          processed_files, skipped_files, failed_files, total_sentences);
     
     Ok((total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats, processing_duration))
 }
@@ -294,6 +298,7 @@ async fn process_single_file_restart(
     path: &std::path::Path,
     detector: &crate::sentence_detector::dialog_detector::SentenceDetectorDialog,
     _overwrite_all: bool,
+    quiet: bool,
 ) -> Result<(u64, u64, u64, bool, FileStats)> {
     let start_time = std::time::Instant::now();
     
@@ -336,13 +341,15 @@ async fn process_single_file_restart(
     
     //info!("Processed {}: {} sentences, {} bytes", path.display(), sentence_count, byte_count);
     let detection_ms = sentence_detection_time.as_millis();
-    println!(
-        "[Processed {}: {} sentences, {} bytes, detection {} ms",
-        path.display(),
-        sentence_count,
-        byte_count,
-        detection_ms
-    );
+    if !quiet {
+        println!(
+            "[Processed {}: {} sentences, {} bytes, detection {} ms",
+            path.display(),
+            sentence_count,
+            byte_count,
+            detection_ms
+        );
+    }
     Ok((sentence_count, byte_count, 1u64, false, file_stats))
 }
 
@@ -353,31 +360,37 @@ async fn process_single_file_restart(
 #[derive(Parser, Debug)]
 #[command(name = "seams")]
 #[command(about = "High-throughput sentence extractor for Project Gutenberg texts")]
+#[command(long_about = "Seams is a high-performance CLI tool for extracting sentences from Project Gutenberg texts.\n\nIt recursively scans for *-0.txt files, detects sentence boundaries using a dialog-aware\nsentence detector, and outputs normalized sentences with span metadata to _seams.txt files.\n\nDesigned for narrative analysis pipelines with >50MB/s throughput.\n\nEXAMPLES:\n  seams ./gutenberg-mirror/            # Process all *-0.txt files\n  seams ./texts --overwrite-all        # Reprocess all files\n  seams ./texts --fail-fast            # Stop on first error\n  seams ./texts --no-progress          # Quiet mode for automation\n  seams ./texts --stats-out bench.json # Custom stats output")]
 #[command(version)]
 struct Args {
     /// Root directory to scan for *-0.txt files
+    #[arg(value_name = "DIR", help = "Root directory to scan recursively for *-0.txt files")]
     root_dir: PathBuf,
     
     /// Overwrite even complete aux files
-    #[arg(long)]
+    #[arg(long, help = "Reprocess all files, even those with complete _seams.txt files")]
     overwrite_all: bool,
     
     
     /// Abort on first error
-    #[arg(long)]
+    #[arg(long, help = "Stop processing immediately on first I/O, UTF-8, or detection error")]
     fail_fast: bool,
     
     
     /// Suppress console progress bars
-    #[arg(long)]
+    #[arg(long, help = "Disable progress bars (useful for automation/CI)")]
     no_progress: bool,
     
+    /// Quiet mode - minimal output for benchmarking
+    #[arg(long, short = 'q', help = "Suppress all non-error output (implies --no-progress)")]
+    quiet: bool,
+    
     /// Stats output file path
-    #[arg(long, default_value = "run_stats.json")]
+    #[arg(long, default_value = "run_stats.json", value_name = "FILE", help = "Write performance statistics to JSON file")]
     stats_out: PathBuf,
     
     /// Clear the restart log before processing
-    #[arg(long)]
+    #[arg(long, help = "Clear the restart log and reprocess all files")]
     clear_restart_log: bool,
 }
 
@@ -413,7 +426,9 @@ async fn main() -> Result<()> {
         let cleared_count = restart_log.completed_count();
         restart_log.clear();
         info!("Cleared {} entries from restart log", cleared_count);
-        println!("Restart log cleared - will reprocess all files");
+        if !args.quiet {
+            println!("Restart log cleared - will reprocess all files");
+        }
     } else {
         // WHY: Verify restart log integrity and clean up stale entries
         let initial_count = restart_log.completed_count();
@@ -458,17 +473,23 @@ async fn main() -> Result<()> {
             match tokio::fs::write(&args.stats_out, json_content).await {
                 Ok(()) => {
                     info!("Stats written to {}", args.stats_out.display());
-                    println!("Stats written to {}", args.stats_out.display());
+                    if !args.quiet {
+                        println!("Stats written to {}", args.stats_out.display());
+                    }
                 }
                 Err(e) => {
                     info!("Warning: Failed to write stats file: {e}");
-                    println!("Warning: Failed to write stats file: {e}");
+                    if !args.quiet {
+                        println!("Warning: Failed to write stats file: {e}");
+                    }
                 }
             }
         }
         Err(e) => {
             info!("Warning: Failed to serialize stats: {e}");
-            println!("Warning: Failed to serialize stats: {e}");
+            if !args.quiet {
+                println!("Warning: Failed to serialize stats: {e}");
+            }
         }
     }
     

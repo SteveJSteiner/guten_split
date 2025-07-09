@@ -25,3 +25,6 @@ tests/generated_boundary_tests.json
 
 # Environment variables (local configuration)
 .env
+
+# benchmark result files
+*_stats.json
