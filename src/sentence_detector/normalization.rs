@@ -113,4 +113,25 @@ mod tests {
         let expected = "Unicode 世界 with émojis 🦀.";
         assert_eq!(normalize_sentence(input), expected);
     }
+
+    #[test]
+    fn test_normalize_sentence_tabs() {
+        let input = "Text\twith\ttabs\there.";
+        let expected = "Text with tabs here.";
+        assert_eq!(normalize_sentence(input), expected);
+    }
+
+    #[test]
+    fn test_normalize_sentence_mixed_whitespace() {
+        let input = "Mixed\t\n\twhitespace\r\n\there.";
+        let expected = "Mixed whitespace here.";
+        assert_eq!(normalize_sentence(input), expected);
+    }
+
+    #[test]
+    fn test_normalize_sentence_consecutive_tabs() {
+        let input = "Multiple\t\t\tconsecutive\ttabs.";
+        let expected = "Multiple consecutive tabs.";
+        assert_eq!(normalize_sentence(input), expected);
+    }
 }
