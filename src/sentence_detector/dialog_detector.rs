@@ -284,7 +284,7 @@ impl DialogStateMachine {
         // Compositional pattern components
         let sentence_end_punct = r"[.!?]";
         let soft_separator = r"[ \t]+";  // spaces and tabs only
-        let hard_separator = r"\n\n";   // double newline
+        let hard_separator = r"(?:\r\n\r\n|\n\n)";   // double newline (Windows or Unix)
         let sentence_start_chars = r"[A-Z\x22\x27\u{201C}\u{2018}\(\[\{]";
         let dialog_open_chars = r"[\x22\x27\u{201C}\u{2018}\(\[\{]";
         
@@ -581,8 +581,8 @@ impl DialogStateMachine {
     }
     
     fn classify_match(&self, matched_text: &str, current_state: &DialogState, text_bytes: &[u8], match_start_byte: usize) -> (MatchType, DialogState) {
-        // Check for pure hard separator (exactly \n\n)
-        if matched_text == "\n\n" {
+        // Check for pure hard separator (exactly \n\n or \r\n\r\n)
+        if matched_text == "\n\n" || matched_text == "\r\n\r\n" {
             // WHY: Check if this hard separator should be rejected due to preceding internal punctuation
             // This implements the core dialog coalescing logic for internal punctuation
             if self.should_reject_hard_separator(text_bytes, match_start_byte) {
@@ -593,8 +593,8 @@ impl DialogStateMachine {
             return (MatchType::HardSeparator, DialogState::Unknown);
         }
         
-        // Check for narrative hard boundary (contains punctuation + \n\n + letter)
-        if matched_text.contains("\n\n") {
+        // Check for narrative hard boundary (contains punctuation + double newline + letter)
+        if matched_text.contains("\n\n") || matched_text.contains("\r\n\r\n") {
             let has_punct = matched_text.chars().any(|c| ".!?".contains(c));
             let has_letter = matched_text.chars().any(|c| c.is_alphabetic());
             if has_punct && has_letter {
@@ -681,10 +681,21 @@ impl DialogStateMachine {
         }
     }
     
+    /// Find hard separator position (handles both Unix \n\n and Windows \r\n\r\n)
+    fn find_hard_separator(&self, text: &str) -> Option<(usize, usize)> {
+        if let Some(pos) = text.find("\r\n\r\n") {
+            return Some((pos, 4)); // position and length
+        }
+        if let Some(pos) = text.find("\n\n") {
+            return Some((pos, 2)); // position and length
+        }
+        None
+    }
+    
     fn find_sent_sep_start(&self, matched_boundary: &str) -> Option<usize> {
         // Find where SENT_SEP starts within a SENT_END + SENT_SEP + SENT_START match
-        // Look for the first whitespace character or \n\n
-        if let Some(hard_sep_pos) = matched_boundary.find("\n\n") {
+        // Look for the first whitespace character or hard separator
+        if let Some((hard_sep_pos, _)) = self.find_hard_separator(matched_boundary) {
             return Some(hard_sep_pos);
         }
         
@@ -705,7 +716,7 @@ impl DialogStateMachine {
         // For dialog endings, include the closing quote in the sentence content
         // Unlike find_sent_sep_start which finds separator start, this finds sentence content end
         
-        if let Some(hard_sep_pos) = matched_boundary.find("\n\n") {
+        if let Some((hard_sep_pos, _)) = self.find_hard_separator(matched_boundary) {
             return Some(hard_sep_pos);
         }
         
@@ -726,8 +737,8 @@ impl DialogStateMachine {
     fn find_sent_sep_end(&self, matched_boundary: &str) -> Option<usize> {
         // Find where SENT_SEP ends within a SENT_END + SENT_SEP + SENT_START match
         // This is where the next sentence should start
-        if let Some(hard_sep_pos) = matched_boundary.find("\n\n") {
-            return Some(hard_sep_pos + 2); // After the \n\n
+        if let Some((hard_sep_pos, sep_len)) = self.find_hard_separator(matched_boundary) {
+            return Some(hard_sep_pos + sep_len); // After the separator
         }
         
         // Find the end of whitespace sequence
@@ -971,5 +982,70 @@ she had been tasting in a corner with evident satisfaction."#;
         // Verify line positions
         assert_eq!(sentences[0].span.start_line, 1);
         assert_eq!(sentences[1].span.start_line, 5);
+        
+        // Also test Windows line endings
+        let input_windows = "He said:\r\n\r\n\"Hello.\"\r\n\r\n\"World.\"";
+        let sentences_windows = detector.detect_sentences_borrowed(input_windows).unwrap();
+        
+        assert_eq!(sentences_windows.len(), 2, "Should detect 2 sentences with Windows line endings");
+        assert_eq!(sentences_windows[0].normalize().trim(), "He said: \"Hello.\"");
+        assert_eq!(sentences_windows[1].normalize().trim(), "\"World.\"");
+    }
+
+    #[test]
+    fn test_pg4300_compass_directions_fix() {
+        let detector = get_detector();
+        
+        // Test the specific PG 4300 case that was failing - compass directions should not split
+        let text = "Listener, S. E. by E.: Narrator, N. W. by W.: on the 53rd parallel of latitude, N., and 6th meridian of longitude, W.: at an angle of 45° to the terrestrial equator.";
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        // This should be one sentence - single capital letters should not create false boundaries
+        assert_eq!(sentences.len(), 1, "Compass directions with single capitals should remain one sentence");
+        assert!(sentences[0].raw_content.contains("S. E. by E."));
+        assert!(sentences[0].raw_content.contains("N. W. by W."));
+        assert!(sentences[0].raw_content.contains("latitude, N.,"));
+        assert!(sentences[0].raw_content.contains("longitude, W.:"));
+    }
+
+    #[test]
+    fn test_missing_seams_reproduction() {
+        let detector = get_detector();
+        
+        // Reproduce the MissingSeams.txt failure case - using Windows line endings (\r\n)
+        let text = "By the narrator a\r\nlimitation of activity, mental and corporal, inasmuch as complete\r\nmental intercourse between himself and the listener had not taken place\r\nsince the consummation of puberty, indicated by catamenic hemorrhage,\r\nof the female issue of narrator and listener, 15 September 1903, there\r\nremained a period of 9 months and 1 day during which, in consequence of\r\na preestablished natural comprehension in incomprehension between the\r\nconsummated females (listener and issue), complete corporal liberty of\r\naction had been circumscribed.\r\n\r\nHow?\r\n\r\nBy various reiterated feminine interrogation concerning the masculine\r\ndestination whither, the place where, the time at which, the duration\r\nfor which, the object with which in the case of temporary absences,\r\nprojected or effected.\r\n\r\nWhat moved visibly above the listener's and the narrator's invisible\r\nthoughts?\r\n\r\nThe upcast reflection of a lamp and shade, an inconstant series of\r\nconcentric circles of varying gradations of light and shadow.\r\n\r\nIn what directions did listener and narrator lie?\r\n\r\nListener, S. E. by E.: Narrator, N. W. by W.: on the 53rd parallel of\r\nlatitude, N., and 6th meridian of longitude, W.: at an angle of 45° to\r\nthe terrestrial equator.\r\n\r\nIn what state of rest or motion?\r\n\r\nAt rest relatively to themselves and to each other.";
+        
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        // This should be multiple sentences, not one massive sentence
+        println!("Detected {} sentences:", sentences.len());
+        for (i, sentence) in sentences.iter().enumerate() {
+            println!("Sentence {}: '{}'", i, sentence.raw_content.trim());
+        }
+        
+        // Expected sentence boundaries:
+        // 1. "...had been circumscribed." 
+        // 2. "How?"
+        // 3. "By various... projected or effected."
+        // 4. "What moved... invisible thoughts?"
+        // 5. "The upcast... light and shadow."
+        // 6. "In what directions... narrator lie?"
+        // 7. "Listener, S. E. by E.... terrestrial equator."
+        // 8. "In what state... rest or motion?"
+        // 9. "At rest... each other."
+        
+        // Should now detect multiple sentences with Windows line ending support
+        assert!(sentences.len() > 1, "Should detect multiple sentences with Windows line endings, got {}", sentences.len());
+        
+        // Verify we get the expected 9 sentences
+        assert_eq!(sentences.len(), 9, "Should detect exactly 9 sentences");
+        
+        // Verify some key sentence boundaries
+        assert!(sentences[0].raw_content.contains("had been circumscribed"));
+        assert_eq!(sentences[1].raw_content.trim(), "How?");
+        assert!(sentences[2].raw_content.contains("projected or effected"));
+        assert!(sentences[5].raw_content.contains("In what directions"));
+        assert!(sentences[6].raw_content.contains("S. E. by E."));
+        assert!(sentences[8].raw_content.contains("relatively to themselves"));
     }
 }

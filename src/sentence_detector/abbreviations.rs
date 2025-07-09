@@ -5,8 +5,12 @@ use std::collections::HashSet;
 
 /// Title abbreviations that cause false sentence boundaries when followed by proper nouns
 /// These are the first part of 2-segment identifiers like "Dr. Smith", "Mr. Johnson"
+/// Single capital letters are commonly used as abbreviations for proper names
 pub const TITLE_ABBREVIATIONS: &[&str] = &[
-    "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr."
+    "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
+    // Single capital letters - commonly used as abbreviations for proper names
+    "A.", "B.", "C.", "D.", "E.", "F.", "G.", "H.", "I.", "J.", "K.", "L.", "M.",
+    "N.", "O.", "P.", "Q.", "R.", "S.", "T.", "U.", "V.", "W.", "X.", "Y.", "Z."
 ];
 
 /// All abbreviations that should not cause sentence splits  
@@ -135,6 +139,20 @@ mod tests {
         for (text, should_detect) in &punctuation_tests {
             assert_eq!(checker.ends_with_abbreviation(text), *should_detect,
                 "Punctuation handling failed for: {text}");
+        }
+        
+        // Test single capital letter abbreviations (PG 4300 fix)
+        let single_capital_tests = [
+            ("Listener, S.", true),
+            ("latitude, N.", true), 
+            ("longitude, W.", true),
+            ("Direction E.", true),
+            ("Point A.", true),
+            ("Section Z.", true),
+        ];
+        for (text, should_detect) in &single_capital_tests {
+            assert_eq!(checker.ends_with_title_abbreviation(text), *should_detect,
+                "Single capital abbreviation failed for: {text}");
         }
     }
 }
