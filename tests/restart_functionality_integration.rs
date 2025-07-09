@@ -30,7 +30,7 @@ async fn test_restart_functionality_integration() {
     // All files should be processed initially
     for file_name in &test_files {
         let file_path = root_path.join(file_name);
-        let should_process = should_process_file(&file_path, &restart_log, false, false).await.unwrap();
+        let should_process = should_process_file(&file_path, &restart_log, false).await.unwrap();
         assert!(should_process, "File {} should be processed initially", file_name);
     }
     
@@ -56,7 +56,7 @@ async fn test_restart_functionality_integration() {
     
     for file_name in &test_files {
         let file_path = root_path.join(file_name);
-        let should_process = should_process_file(&file_path, &restart_log, false, false).await.unwrap();
+        let should_process = should_process_file(&file_path, &restart_log, false).await.unwrap();
         assert!(!should_process, "File {} should be skipped on restart", file_name);
     }
     
@@ -65,12 +65,8 @@ async fn test_restart_functionality_integration() {
         let file_path = root_path.join(file_name);
         
         // With overwrite_all=true, should process
-        let should_process = should_process_file(&file_path, &restart_log, true, false).await.unwrap();
+        let should_process = should_process_file(&file_path, &restart_log, true).await.unwrap();
         assert!(should_process, "File {} should be processed with overwrite_all=true", file_name);
-        
-        // With overwrite_use_cached_locations=true, should process  
-        let should_process = should_process_file(&file_path, &restart_log, false, true).await.unwrap();
-        assert!(should_process, "File {} should be processed with overwrite_use_cached_locations=true", file_name);
     }
     
     // Test 5: Missing aux file should trigger reprocessing
@@ -78,7 +74,7 @@ async fn test_restart_functionality_integration() {
     let aux_path = generate_aux_file_path(&file_path);
     fs::remove_file(&aux_path).await.unwrap();
     
-    let should_process = should_process_file(&file_path, &restart_log, false, false).await.unwrap();
+    let should_process = should_process_file(&file_path, &restart_log, false).await.unwrap();
     assert!(should_process, "File should be reprocessed if aux file is missing");
     
     // Test 6: Restart log persistence
@@ -180,7 +176,7 @@ async fn test_cli_restart_integration() {
     
     for i in 1..=5 {
         let file_path = root_path.join(format!("test{}-0.txt", i));
-        let should_process = should_process_file(&file_path, &restart_log, false, false).await.unwrap();
+        let should_process = should_process_file(&file_path, &restart_log, false).await.unwrap();
         assert!(!should_process, "File {} should be skipped on second run", i);
     }
     
@@ -190,11 +186,11 @@ async fn test_cli_restart_integration() {
     fs::write(&file_path, modified_content).await.unwrap();
     
     // File should still be skipped (restart log doesn't check modification time)
-    let should_process = should_process_file(&file_path, &restart_log, false, false).await.unwrap();
+    let should_process = should_process_file(&file_path, &restart_log, false).await.unwrap();
     assert!(!should_process, "File should still be skipped based on restart log");
     
     // But with overwrite flags it should be processed
-    let should_process = should_process_file(&file_path, &restart_log, true, false).await.unwrap();
+    let should_process = should_process_file(&file_path, &restart_log, true).await.unwrap();
     assert!(should_process, "File should be processed with overwrite_all=true");
     
     // Check restart log file structure

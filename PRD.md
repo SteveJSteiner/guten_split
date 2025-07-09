@@ -41,7 +41,6 @@ F-7	Write results via async buffered writer to <path>_seams.txt.
 F-8	Generate per-file stats (chars processed, sentences, wall-clock ms) and aggregate into run_stats.json with total chars/sec.
 F-9	Skip processing when aux file exists and completes without truncation; detect partial files by trailing newline + EOF.
 F-10	Respect --fail_fast: abort entire run on first I/O/UTF-8/DFA error.
-F-11	Cache discovered file locations to avoid slow directory traversal on subsequent runs.
 
 5 Non-Functional Requirements
 

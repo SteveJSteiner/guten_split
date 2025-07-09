@@ -122,15 +122,9 @@ pub async fn should_process_file(
     file_path: &Path,
     restart_log: &RestartLog,
     overwrite_all: bool,
-    overwrite_use_cached_locations: bool,
 ) -> Result<bool> {
     // If overwrite_all is true, always process
     if overwrite_all {
-        return Ok(true);
-    }
-    
-    // If overwrite_use_cached_locations is true, process even if completed
-    if overwrite_use_cached_locations {
         return Ok(true);
     }
     
@@ -237,20 +231,16 @@ mod tests {
         log.mark_completed(&file1);
         
         // Without overwrite flags - should skip completed file
-        let should_process = should_process_file(&file1, &log, false, false).await.unwrap();
+        let should_process = should_process_file(&file1, &log, false).await.unwrap();
         assert!(!should_process);
         
         // With overwrite_all - should process
-        let should_process = should_process_file(&file1, &log, true, false).await.unwrap();
-        assert!(should_process);
-        
-        // With overwrite_use_cached_locations - should process
-        let should_process = should_process_file(&file1, &log, false, true).await.unwrap();
+        let should_process = should_process_file(&file1, &log, true).await.unwrap();
         assert!(should_process);
         
         // Remove aux file - should process even without overwrite
         fs::remove_file(&aux1).await.unwrap();
-        let should_process = should_process_file(&file1, &log, false, false).await.unwrap();
+        let should_process = should_process_file(&file1, &log, false).await.unwrap();
         assert!(should_process);
     }
     

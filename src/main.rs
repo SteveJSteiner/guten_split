@@ -91,10 +91,9 @@ async fn process_with_overlapped_pipeline(
                     let detector_clone = detector.clone();
                     let path = file_validation.path.clone();
                     let overwrite_all = args.overwrite_all;
-                    let overwrite_use_cached_locations = args.overwrite_use_cached_locations;
                     
                     // Check if file should be processed using restart log
-                    let should_process = should_process_file(&path, restart_log, overwrite_all, overwrite_use_cached_locations).await.unwrap_or(true);
+                    let should_process = should_process_file(&path, restart_log, overwrite_all).await.unwrap_or(true);
                     
                     if should_process {
                         let task = tokio::spawn(async move {
@@ -103,7 +102,6 @@ async fn process_with_overlapped_pipeline(
                                 &path,
                                 &detector_clone,
                                 overwrite_all,
-                                overwrite_use_cached_locations,
                             ).await
                         });
                         
@@ -296,7 +294,6 @@ async fn process_single_file_restart(
     path: &std::path::Path,
     detector: &crate::sentence_detector::dialog_detector::SentenceDetectorDialog,
     _overwrite_all: bool,
-    _overwrite_use_cached_locations: bool,
 ) -> Result<(u64, u64, u64, bool, FileStats)> {
     let start_time = std::time::Instant::now();
     
@@ -365,9 +362,6 @@ struct Args {
     #[arg(long)]
     overwrite_all: bool,
     
-    /// Overwrite aux files but use cached file discovery results
-    #[arg(long)]
-    overwrite_use_cached_locations: bool,
     
     /// Abort on first error
     #[arg(long)]
