@@ -75,7 +75,8 @@ async fn process_with_overlapped_pipeline(
     let mut processing_results = Vec::new();
     
     // WHY: Use bounded concurrency to prevent resource exhaustion
-    let max_concurrent = (num_cpus::get() / 2).max(1);
+    //let max_concurrent = (num_cpus::get() / 2).max(1); // Alternative: Use half of available CPU cores
+    let max_concurrent = (num_cpus::get().saturating_sub(1)).max(1); // Leave one core free for system tasks
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
     let detector = Arc::new(
         crate::sentence_detector::dialog_detector::SentenceDetectorDialog::new()
@@ -88,7 +89,7 @@ async fn process_with_overlapped_pipeline(
             Ok(file_validation) => {
                 discovered_files.push(file_validation.clone());
                 
-                if file_validation.is_valid_utf8 && file_validation.error.is_none() {
+                if file_validation.error.is_none() {
                     valid_files.push(file_validation.clone());
                     
                     // Start processing this file immediately
@@ -127,7 +128,18 @@ async fn process_with_overlapped_pipeline(
                         processing_results.push(skip_result);
                     }
                 } else {
-                    invalid_files.push(file_validation);
+                    invalid_files.push(file_validation.clone());
+                    let validation_failure_stats = FileStats {
+                        path: file_validation.path.to_string_lossy().to_string(),
+                        chars_processed: 0,
+                        sentences_detected: 0,
+                        processing_time_ms: 0,
+                        sentence_detection_time_ms: 0,
+                        chars_per_sec: 0.0,
+                        status: "failed_validation".to_string(),
+                        error: file_validation.error,
+                    };
+                    processing_results.push(Ok((0, 0, 0, false, validation_failure_stats)));
                 }
             }
             Err(e) => {
@@ -233,8 +245,6 @@ async fn process_with_overlapped_pipeline(
         for file in &invalid_files {
             if let Some(ref error) = file.error {
                 info!("Issue with {}: {}", file.path.display(), error);
-            } else if !file.is_valid_utf8 {
-                info!("UTF-8 validation failed: {}", file.path.display());
             }
         }
     }
@@ -383,6 +393,150 @@ async fn process_single_file_restart(
     Ok((sentence_count, byte_count, 1u64, false, file_stats))
 }
 
+/// Process a single file when given a file path instead of directory
+async fn process_single_file_mode(
+    file_path: &std::path::Path,
+    args: &Args,
+) -> Result<()> {
+    // Validate file exists and matches pattern
+    if !file_path.exists() {
+        anyhow::bail!(
+            "File not found: {}\n\nSUGGESTIONS:\n• Check the file path spelling\n• Ensure you have read permissions for the file\n• Use an absolute path if using relative paths",
+            file_path.display()
+        );
+    }
+    
+    if !file_path.is_file() {
+        anyhow::bail!(
+            "Path exists but is not a file: {}\n\nSUGGESTIONS:\n• Provide a file path, not a directory path\n• Use seams with a directory to process multiple files\n• Example: seams /path/to/file-0.txt",
+            file_path.display()
+        );
+    }
+    
+    // Check if it matches the *-0.txt pattern
+    let file_name = file_path.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    
+    if !file_name.ends_with("-0.txt") {
+        anyhow::bail!(
+            "File does not match expected pattern: {}\n\nSUGGESTIONS:\n• Seams processes Project Gutenberg files ending in '-0.txt'\n• Example valid filenames: 'pg1234-0.txt', 'alice-0.txt'\n• If this is the correct file, rename it to match the pattern",
+            file_path.display()
+        );
+    }
+    
+    if !args.quiet {
+        println!("seams v{} - Processing single file", env!("CARGO_PKG_VERSION"));
+        println!("File: {}", file_path.display());
+    }
+    
+    let start_time = std::time::Instant::now();
+    
+    // Initialize detector
+    let detector = crate::sentence_detector::dialog_detector::SentenceDetectorDialog::new()
+        .map_err(|e| anyhow::anyhow!("Failed to initialize dialog sentence detector: {}", e))?;
+    
+    // Process the single file
+    let result = process_single_file_restart(
+        file_path,
+        &detector,
+        args.overwrite_all,
+        args.quiet,
+    ).await;
+    
+    match result {
+        Ok((sentence_count, byte_count, _, _, file_stats)) => {
+            let processing_duration = start_time.elapsed();
+            
+            if !args.quiet {
+                println!("Single file processing complete:");
+                println!("  Successfully processed: 1 file");
+                println!("  Total bytes processed: {byte_count}");
+                println!("  Total sentences detected: {sentence_count}");
+                println!("  Total time spent: {:.2}s", processing_duration.as_secs_f64());
+                
+                if byte_count > 0 && processing_duration.as_secs_f64() > 0.0 {
+                    let throughput_chars_per_sec = byte_count as f64 / processing_duration.as_secs_f64();
+                    let throughput_mb_per_sec = throughput_chars_per_sec / 1_000_000.0;
+                    println!("  Overall throughput: {throughput_chars_per_sec:.0} chars/sec ({throughput_mb_per_sec:.2} MB/s)");
+                    
+                    // Show sentence detection throughput
+                    if file_stats.sentence_detection_time_ms > 0 {
+                        let sentence_detection_time_sec = file_stats.sentence_detection_time_ms as f64 / 1000.0;
+                        let sentence_detection_throughput_chars_per_sec = byte_count as f64 / sentence_detection_time_sec;
+                        let sentence_detection_throughput_mb_per_sec = sentence_detection_throughput_chars_per_sec / 1_000_000.0;
+                        println!("  Sentence detection throughput: {sentence_detection_throughput_chars_per_sec:.0} chars/sec ({sentence_detection_throughput_mb_per_sec:.2} MB/s)");
+                    }
+                }
+            }
+            
+            // Generate stats for single file
+            let overall_chars_per_sec = if processing_duration.as_secs_f64() > 0.0 {
+                byte_count as f64 / processing_duration.as_secs_f64()
+            } else {
+                0.0
+            };
+            
+            let sentence_detection_chars_per_sec = if file_stats.sentence_detection_time_ms > 0 {
+                byte_count as f64 / (file_stats.sentence_detection_time_ms as f64 / 1000.0)
+            } else {
+                0.0
+            };
+            
+            let run_stats = RunStats {
+                run_start: SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs().to_string(),
+                total_processing_time_ms: processing_duration.as_millis() as u64,
+                total_sentence_detection_time_ms: file_stats.sentence_detection_time_ms,
+                total_chars_processed: byte_count,
+                total_sentences_detected: sentence_count,
+                overall_chars_per_sec,
+                sentence_detection_chars_per_sec,
+                files_processed: 1,
+                files_skipped: 0,
+                files_failed: 0,
+                file_stats: vec![file_stats],
+            };
+            
+            // Write stats to JSON file
+            match serde_json::to_string_pretty(&run_stats) {
+                Ok(json_content) => {
+                    match tokio::fs::write(&args.stats_out, json_content).await {
+                        Ok(()) => {
+                            info!("Stats written to {}", args.stats_out.display());
+                            if !args.quiet {
+                                println!("Stats written to {}", args.stats_out.display());
+                            }
+                        }
+                        Err(e) => {
+                            info!("Warning: Failed to write stats file: {e}");
+                            if !args.quiet {
+                                println!("Warning: Failed to write stats file: {e}");
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    info!("Warning: Failed to serialize stats: {e}");
+                    if !args.quiet {
+                        println!("Warning: Failed to serialize stats: {e}");
+                    }
+                }
+            }
+            
+            Ok(())
+        }
+        Err(e) => {
+            if !args.quiet {
+                println!("Failed to process file: {e}");
+            }
+            Err(e)
+        }
+    }
+}
+
 // Cache-based discovery logic removed - using fresh parallel discovery only
 
 // Functions moved to parallel_processing module
@@ -400,6 +554,7 @@ Designed for narrative analysis pipelines.
 BASIC USAGE:
   seams /path/to/gutenberg/                    # Process all *-0.txt files in directory tree
   seams ~/Downloads/gutenberg-mirror/          # Process entire Gutenberg mirror
+  seams /path/to/single-file-0.txt             # Process a single *-0.txt file
 
 COMMON WORKFLOWS:
   seams ./texts --overwrite-all                # Reprocess all files (ignore existing outputs)
@@ -423,8 +578,8 @@ TROUBLESHOOTING:
   • Want to reprocess? Use --overwrite-all or --clear-restart-log")]
 #[command(version)]
 struct Args {
-    /// Root directory to scan for *-0.txt files
-    #[arg(value_name = "DIR", help = "Root directory to scan recursively for *-0.txt files")]
+    /// Root directory to scan for *-0.txt files, or single file path
+    #[arg(value_name = "PATH", help = "Directory to scan recursively for *-0.txt files, or single *-0.txt file to process")]
     root_dir: PathBuf,
     
     /// Overwrite even complete aux files
@@ -475,9 +630,15 @@ async fn main() -> Result<()> {
         );
     }
     
+    // Check if input is a file or directory
+    if args.root_dir.is_file() {
+        // Single file mode
+        return process_single_file_mode(&args.root_dir, &args).await;
+    }
+    
     if !args.root_dir.is_dir() {
         anyhow::bail!(
-            "Path exists but is not a directory: {}\n\nSUGGESTIONS:\n• Provide a directory path, not a file path\n• Use the parent directory containing your *-0.txt files\n• Example: seams /path/to/gutenberg-texts/",
+            "Path exists but is neither a file nor a directory: {}\n\nSUGGESTIONS:\n• Provide a directory path to process multiple files\n• Provide a single *-0.txt file path to process one file\n• Example: seams /path/to/gutenberg-texts/ or seams /path/to/file-0.txt",
             args.root_dir.display()
         );
     }

@@ -26,11 +26,13 @@ def get_system_info() -> Dict[str, Any]:
         "architecture": platform.machine()
     }
 
-def run_seams_benchmark(root_dir: str, stats_file: str) -> Dict[str, Any]:
+def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None) -> Dict[str, Any]:
     """Run seams benchmark and extract results."""
     benchmark_start = time.time()
     
     print("🔨 Building seams...")
+    if max_files:
+        print(f"   Note: seams will process ALL files (--max-files not supported yet)")
     
     # Build seams first
     build_result = subprocess.run(
@@ -51,8 +53,11 @@ def run_seams_benchmark(root_dir: str, stats_file: str) -> Dict[str, Any]:
     
     # Run seams benchmark
     start_time = time.time()
+    cmd = ["./target/release/seams", root_dir, "--stats-out", stats_file, "--overwrite-all"]
+    # Note: seams doesn't support --max-files yet, so it processes all files
+    
     result = subprocess.run(
-        ["./target/release/seams", root_dir, "--stats-out", stats_file, "--overwrite-all"],
+        cmd,
         cwd=Path(__file__).parent.parent,
         capture_output=True,
         text=True
@@ -109,12 +114,12 @@ def run_seams_benchmark(root_dir: str, stats_file: str) -> Dict[str, Any]:
         print(f"   Files: {files_processed}/{files_processed + files_failed}")
         print(f"   Chars: {chars_processed:,}")
         print(f"   Sentences: {total_sentences:,} (min: {sentence_stats.get('min', 0)}, Q25: {sentence_stats.get('q25', 0)}, avg: {sentence_stats.get('average', 0):.1f}, median: {sentence_stats.get('median', 0):.1f}, Q75: {sentence_stats.get('q75', 0)}, max: {sentence_stats.get('max', 0)})")
-        print(f"   Throughput: {throughput:,.0f} chars/sec ({throughput/(1024*1024):.2f} MB/sec)")
         
         # Show sentence detection throughput if available
         sentence_detection_throughput = stats.get("sentence_detection_chars_per_sec", 0)
         if sentence_detection_throughput > 0:
-            print(f"   Sentence detection: {sentence_detection_throughput:,.0f} chars/sec ({sentence_detection_throughput/(1024*1024):.2f} MB/sec)")
+            print(f"   Sentence detection throughput: {sentence_detection_throughput:,.0f} chars/sec ({sentence_detection_throughput/(1024*1024):.2f} MB/sec)")
+        print(f"   Total e2e throughput: {throughput:,.0f} chars/sec ({throughput/(1024*1024):.2f} MB/sec)")
         if files_failed > 0:
             print(f"   ⚠️  {files_failed} file(s) failed:")
             for file_stat in stats.get("file_stats", []):
@@ -177,8 +182,8 @@ def run_python_benchmark_with_venv(script_path: str, root_dir: str, stats_file: 
         total_sentences = stats.get("total_sentences", 0)
         sentence_counts = []
         for file_result in stats.get("results", []):
-            if file_result.get("success", True):
-                sentence_counts.append(file_result.get("sentence_count", 0))
+            if file_result.get("status") == "success" or file_result.get("success"):
+                sentence_counts.append(file_result.get("sentences_detected") or file_result.get("sentence_count", 0))
         
         sentence_stats = {}
         if sentence_counts:
@@ -203,12 +208,16 @@ def run_python_benchmark_with_venv(script_path: str, root_dir: str, stats_file: 
         files_processed = stats.get("successful_files", 0)
         failed_files = stats.get("failed_files", 0)
         
+        # Calculate total e2e throughput
+        total_e2e_throughput = chars_processed / benchmark_time if benchmark_time > 0 else 0
+        
         print(f"✅ {tool_name} completed:")
         print(f"   Total e2e time: {benchmark_time:.2f}s")
         print(f"   Files: {files_processed}/{files_processed + failed_files}")
         print(f"   Chars: {chars_processed:,}")
         print(f"   Sentences: {total_sentences:,} (min: {sentence_stats.get('min', 0)}, Q25: {sentence_stats.get('q25', 0)}, avg: {sentence_stats.get('average', 0):.1f}, median: {sentence_stats.get('median', 0):.1f}, Q75: {sentence_stats.get('q75', 0)}, max: {sentence_stats.get('max', 0)})")
-        print(f"   Throughput: {throughput:,.0f} chars/sec ({throughput/(1024*1024):.2f} MB/sec)")
+        print(f"   Sentence detection throughput: {throughput:,.0f} chars/sec ({throughput/(1024*1024):.2f} MB/sec)")
+        print(f"   Total e2e throughput: {total_e2e_throughput:,.0f} chars/sec ({total_e2e_throughput/(1024*1024):.2f} MB/sec)")
         if failed_files > 0:
             print(f"   ⚠️  {failed_files} file(s) failed:")
             for file_result in stats.get("results", []):
@@ -218,9 +227,10 @@ def run_python_benchmark_with_venv(script_path: str, root_dir: str, stats_file: 
                     print(f"      • {Path(file_path).name}: {error}")
         print()
         
-        # Add benchmark timing and sentence stats to stats
+        # Add benchmark timing, sentence stats, and total e2e throughput to stats
         stats["benchmark_e2e_time_s"] = benchmark_time
         stats["sentence_stats"] = sentence_stats
+        stats["total_e2e_throughput_chars_per_sec"] = total_e2e_throughput
         
         return {
             "success": True,
@@ -249,15 +259,15 @@ def find_common_successful_files(results: List[Dict[str, Any]]) -> set:
         if "results" in result["stats"]:
             # Python format
             successful_files = {
-                r["file_path"] for r in result["stats"]["results"] 
-                if r.get("success", True)
+                r.get("file_path") or r.get("path") for r in result["stats"]["results"] 
+                if r.get("success", True) or r.get("status") == "success"
             }
             all_file_sets.append(successful_files)
         elif "file_stats" in result["stats"]:
             # Seams format
             successful_files = {
                 r["path"] for r in result["stats"]["file_stats"] 
-                if r.get("status") == "processed"
+                if r.get("status") == "success"
             }
             all_file_sets.append(successful_files)
     
@@ -268,25 +278,34 @@ def find_common_successful_files(results: List[Dict[str, Any]]) -> set:
 
 def recalculate_stats_for_common_files(result: Dict[str, Any], common_files: set) -> Dict[str, Any]:
     """Recalculate stats using only the common successful files."""
-    if not result["success"] or "results" not in result["stats"]:
+    if not result["success"]:
         return result
     
     stats = result["stats"]
-    file_results = stats["results"]
+    
+    # Handle different result formats
+    if "results" in stats:
+        # Python format
+        file_results = stats["results"]
+    elif "file_stats" in stats:
+        # Seams format - just return as-is since we can't easily recalculate seams stats
+        return result
+    else:
+        return result
     
     # Filter to only common files
     common_results = [
         r for r in file_results 
-        if r["file_path"] in common_files and r.get("success", True)
+        if (r.get("file_path") in common_files or r.get("path") in common_files) and (r.get("success", True) or r.get("status") == "success")
     ]
     
     if not common_results:
         return result
     
     # Recalculate totals
-    total_chars = sum(r["chars_processed"] for r in common_results)
-    total_sentences = sum(r["sentence_count"] for r in common_results)
-    total_time = sum(r["processing_time_ms"] for r in common_results) / 1000.0  # Convert to seconds
+    total_chars = sum(r.get("chars_processed", 0) for r in common_results)
+    total_sentences = sum(r.get("sentence_count", 0) or r.get("sentences_detected", 0) for r in common_results)
+    total_time = sum(r.get("processing_time_ms", 0) for r in common_results) / 1000.0  # Convert to seconds
     
     # Create new stats
     new_stats = stats.copy()
@@ -455,7 +474,7 @@ def main():
     print()
     
     # Run seams benchmark
-    seams_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json")
+    seams_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json", args.max_files)
     results.append(seams_result)
     
     # Run Python benchmarks (using venv python)
@@ -487,51 +506,118 @@ def main():
     with open(args.output, 'w') as f:
         json.dump(comparison, f, indent=2)
     
-    # Print summary
+    # Print summary table
     print(f"\n=== Benchmark Comparison Summary ===")
-    print(f"System: {system_info.get('platform', 'Unknown')}")
-    print(f"CPU: {system_info.get('processor', 'Unknown')}")
-    print(f"Memory: {system_info.get('memory_gb', 'Unknown')} GB")
-    print(f"Python: {system_info.get('python_version', 'Unknown')}")
-    print()
+    print(f"| Benchmark (version) | Cores | End-to-end time | Speed-up vs nupunkt | Sentences / s | Sentence detection throughput | Total e2e throughput | Note |")
+    print(f"|---------------------|:----:|---------------:|--------------------:|--------------:|-----------------------------:|--------------------:|------|")
+
+    # Get nupunkt as baseline
+    baseline_results = comparison.get("raw_results", []) if comparison.get("raw_results") else results
+    nupunkt_results = next((r for r in baseline_results if r.get("tool") == "nupunkt"), None)
+    nupunkt_e2e_time = nupunkt_results.get("stats", {}).get("benchmark_e2e_time_s", 1) if nupunkt_results else 1
+
+    # Process results in specific order: seams first, then others
+    # Use raw_results if available, otherwise fall back to results list
+    if comparison.get("raw_results"):
+        all_results = comparison.get("raw_results", [])
+    else:
+        all_results = results
     
-    if "performance_comparison" in comparison:
-        print(f"Methodology: {comparison.get('methodology_note', 'All tools processed same files')}")
-        print(f"Common files processed: {comparison.get('common_files_processed', 'N/A')}")
-        print()
-        print("Performance Results (sorted by throughput):")
-        for i, result in enumerate(comparison["performance_comparison"]):
-            print(f"{i+1}. {result['tool']}: {result['throughput_chars_per_sec']:,.0f} chars/sec "
-                  f"({result['throughput_mb_per_sec']:.2f} MB/sec) "
-                  f"[{result['relative_performance']:.2f}x]")
+    successful_results = [r for r in all_results if r.get("success")]
+    
+    # Sort to put seams first, then others alphabetically
+    successful_results.sort(key=lambda x: (0 if x.get("tool") == "seams" else 1, x.get("tool", "")))
+
+    for result in successful_results:
+        tool = result.get("tool")
+        stats = result.get("stats")
+        version = stats.get("version", "")
+        cores = system_info.get('cpu_count', 1) if tool == "seams" else 1
+        e2e_time = stats.get("benchmark_e2e_time_s", 0)
+        speed_up = nupunkt_e2e_time / e2e_time if e2e_time > 0 else 0
+        total_sentences = stats.get("total_sentences_detected") or stats.get("total_sentences", 0)
+        sentences_per_sec = total_sentences / e2e_time if e2e_time > 0 else 0
         
-        print("\nSentence Detection Comparison:")
-        for result in comparison.get("normalized_results", []):
-            if result["success"]:
-                stats = result["stats"]
-                sentence_stats = stats.get("sentence_stats", {})
-                if sentence_stats:
-                    tool = result["tool"]
-                    print(f"  {tool}: {sentence_stats['total']:,} sentences "
-                          f"(min: {sentence_stats['min']}, Q25: {sentence_stats['q25']}, avg: {sentence_stats['average']:.1f}, median: {sentence_stats['median']:.1f}, Q75: {sentence_stats['q75']}, max: {sentence_stats['max']})")
+        # Format tool name and version
+        if version:
+            tool_display = f"{tool} ({version})"
+        else:
+            tool_display = tool
+            
+        # Apply bold formatting for seams
+        if tool == "seams":
+            tool_display = f"**{tool_display}**"
+            
+        # Format cores
+        cores_str = f"**{cores}**" if tool == "seams" else str(cores)
         
-        print("\nFile Processing Summary:")
-        for result in comparison.get("raw_results", []):
-            if result["success"]:
-                stats = result["stats"]
-                tool = result["tool"]
-                if "files_processed" in stats:  # Seams format
-                    successful = stats["files_processed"]
-                    failed = stats.get("files_failed", 0)
-                    total = successful + failed
-                else:  # Python format
-                    successful = stats.get("successful_files", 0)
-                    failed = stats.get("failed_files", 0)
-                    total = stats.get("total_files", successful + failed)
+        # Format time
+        if tool == "seams":
+            if e2e_time < 60:
+                time_str = f"**{e2e_time:.0f} s**"
+            else:
+                minutes = int(e2e_time // 60)
+                seconds = int(e2e_time % 60)
+                time_str = f"**{minutes} m {seconds} s**"
+        else:
+            if e2e_time < 60:
+                time_str = f"{e2e_time:.0f} s"
+            else:
+                minutes = int(e2e_time // 60)
+                seconds = int(e2e_time % 60)
+                time_str = f"{minutes} m {seconds} s"
+        
+        # Format speed-up
+        if tool == "seams":
+            speed_up_str = f"**{speed_up:.0f} ×**"
+        else:
+            if speed_up < 1:
+                speed_up_str = f"{speed_up:.2f} ×"
+            else:
+                speed_up_str = f"{speed_up:.0f} ×"
+        
+        # Format sentences per second
+        if tool == "seams":
+            sentences_per_sec_str = f"**{sentences_per_sec / 1000000:.1f} M**"
+        else:
+            if sentences_per_sec >= 1000:
+                sentences_per_sec_str = f"{sentences_per_sec / 1000:.0f} k"
+            else:
+                sentences_per_sec_str = f"{sentences_per_sec:.0f}"
+        
+        # Get sentence detection throughput and total throughput
+        if tool == "seams":
+            sentence_detection_throughput = stats.get("sentence_detection_chars_per_sec", 0)
+            total_throughput = stats.get("overall_chars_per_sec", 0)
+            
+            # Format sentence detection throughput
+            if sentence_detection_throughput > 0:
+                sentence_detection_str = f"**{sentence_detection_throughput / 1000000:.1f} MB/s**"
+            else:
+                sentence_detection_str = "**N/A**"
+            
+            # Format total throughput
+            total_throughput_str = f"**{total_throughput / 1000000:.1f} MB/s**"
+        else:
+            # For Python tools, get both throughputs
+            sentence_detection_throughput = stats.get("aggregate_throughput_chars_per_sec", 0)
+            total_throughput = stats.get("total_e2e_throughput_chars_per_sec", sentence_detection_throughput)
+            
+            # Format throughputs
+            if sentence_detection_throughput > 0:
+                sentence_detection_str = f"{sentence_detection_throughput / 1000000:.1f} MB/s"
+            else:
+                sentence_detection_str = "N/A"
                 
-                print(f"  {tool}: {successful}/{total} files successful")
-                if failed > 0:
-                    print(f"    ⚠️  {failed} file(s) failed")
+            if total_throughput > 0:
+                total_throughput_str = f"{total_throughput / 1000000:.1f} MB/s"
+            else:
+                total_throughput_str = "N/A"
+        
+        # Set note
+        note = "line offsets included" if tool == "seams" else "pure-Python"
+
+        print(f"| {tool_display} | {cores_str} | {time_str} | {speed_up_str} | {sentences_per_sec_str} | {sentence_detection_str} | {total_throughput_str} | {note} |")
     
     print(f"\nDetailed results written to: {args.output}")
 

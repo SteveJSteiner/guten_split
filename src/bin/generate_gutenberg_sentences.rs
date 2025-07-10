@@ -207,7 +207,7 @@ async fn main() -> Result<()> {
     // Filter to valid UTF-8 files only
     let valid_files: Vec<_> = discovered_files
         .iter()
-        .filter(|f| f.is_valid_utf8 && f.error.is_none())
+        .filter(|f| f.error.is_none())
         .collect();
     
     println!("📊 Found {} valid UTF-8 files to process", valid_files.len());

@@ -83,13 +83,13 @@ fn validate_discovery_performance(results: &[DiscoveryBenchmarkResult]) {
         let parallel_vs_serial_speedup = fresh_parallel.files_per_sec / fresh_serial.files_per_sec;
         
         println!("\n=== Performance Analysis ===");
-        println!("Parallel vs Serial Discovery: {:.1}x speedup", parallel_vs_serial_speedup);
+        println!("Parallel vs Serial Discovery: {parallel_vs_serial_speedup:.1}x speedup");
         
         // Validate performance claims
         if parallel_vs_serial_speedup > 1.5 {
-            println!("✅ PARALLEL DISCOVERY BENEFICIAL: {:.1}x faster than serial", parallel_vs_serial_speedup);
+            println!("✅ PARALLEL DISCOVERY BENEFICIAL: {parallel_vs_serial_speedup:.1}x faster than serial");
         } else {
-            println!("⚠️  PARALLEL DISCOVERY MARGINAL: Only {:.1}x faster than serial", parallel_vs_serial_speedup);
+            println!("⚠️  PARALLEL DISCOVERY MARGINAL: Only {parallel_vs_serial_speedup:.1}x faster than serial");
         }
         
         // Check discovery speed

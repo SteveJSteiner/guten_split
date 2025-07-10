@@ -14,12 +14,12 @@ async fn test_pipeline_invalid_utf8() {
     let invalid_path = fixture.root_path.join("invalid-0.txt");
     std::fs::write(&invalid_path, [0xFF, 0xFE, 0xFD]).expect("Failed to write invalid UTF-8 file");
     
-    // Discovery should exclude invalid UTF-8 files
+    // Discovery should find the file (validation happens during processing now)
     let files = discovery::find_gutenberg_files(&fixture.root_path).await
         .expect("Discovery should succeed");
     
-    // Should find no valid files
-    assert_eq!(files.len(), 0, "Invalid UTF-8 files should be excluded");
+    // Should find the file during discovery (UTF-8 validation is now deferred)
+    assert_eq!(files.len(), 1, "Files should be discovered regardless of UTF-8 content");
 }
 
 /// Test pipeline with permission denied scenarios
@@ -36,12 +36,12 @@ async fn test_pipeline_permission_denied() {
         perms.set_mode(0o000);
         std::fs::set_permissions(&file_path, perms).unwrap();
         
-        // Discovery should handle permission errors gracefully
+        // Discovery should find the file (access errors happen during processing now)
         let files = discovery::find_gutenberg_files(&fixture.root_path).await
             .expect("Discovery should handle permission errors");
         
-        // Should find no accessible files
-        assert_eq!(files.len(), 0, "Inaccessible files should be excluded");
+        // Should find the file during discovery (access validation is now deferred)
+        assert_eq!(files.len(), 1, "Files should be discovered regardless of access permissions");
         
         // Restore permissions for cleanup
         let mut perms = std::fs::metadata(&file_path).unwrap().permissions();

@@ -65,8 +65,8 @@ async fn benchmark_parallel_vs_serial_discovery() {
     println!("Directory structure: {} subdirectories", subdirs.len());
     
     // Verify all files are valid
-    let valid_serial = serial_files.iter().filter(|f| f.is_valid_utf8 && f.error.is_none()).count();
-    let valid_parallel = parallel_files.iter().filter(|f| f.is_valid_utf8 && f.error.is_none()).count();
+    let valid_serial = serial_files.iter().filter(|f| f.error.is_none()).count();
+    let valid_parallel = parallel_files.iter().filter(|f| f.error.is_none()).count();
     
     assert_eq!(valid_serial, valid_parallel);
     assert_eq!(valid_serial, 50);

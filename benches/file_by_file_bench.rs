@@ -57,7 +57,7 @@ fn get_sample_files() -> Vec<PathBuf> {
         // Take only 3 files for initial testing to avoid hangs
         let valid_files: Vec<PathBuf> = discovered_files
             .iter()
-            .filter(|f| f.is_valid_utf8 && f.error.is_none())
+            .filter(|f| f.error.is_none())
             .take(3)
             .map(|f| f.path.clone())
             .collect();

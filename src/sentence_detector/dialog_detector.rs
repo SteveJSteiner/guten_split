@@ -1049,7 +1049,7 @@ scholars ask."#;
                 }
             }
             Err(e) => {
-                println!("  Error: {}", e);
+                println!("  Error: {e}");
                 if e.to_string().contains("Cannot seek backwards") {
                     println!("  ACTUAL BACKWARD SEEK BUG REPRODUCED!");
                 }
@@ -1063,7 +1063,7 @@ scholars ask."#;
         
         // Create a minimal case that demonstrates the backward seek issue
         // Start with a simple case and add complexity until we reproduce the problem
-        let test_cases = vec![
+        let test_cases = [
             // Simple case - should work
             "Hello. World.",
             // Case with whitespace
@@ -1113,7 +1113,7 @@ scholars ask."#;
                     }
                 }
                 Err(e) => {
-                    println!("  Error: {}", e);
+                    println!("  Error: {e}");
                     if e.to_string().contains("Cannot seek backwards") {
                         println!("  BACKWARD SEEK BUG FOUND!");
                         failed_cases.push((i, test_case, e.to_string()));
@@ -1145,7 +1145,7 @@ scholars ask."#;
                 println!("Full file processed successfully: {} sentences", sentences.len());
             }
             Err(e) => {
-                println!("Full file error: {}", e);
+                println!("Full file error: {e}");
                 if e.to_string().contains("Cannot seek backwards") {
                     println!("REPRODUCED WITH FULL FILE");
                     // Extract the exact position where it fails
@@ -1155,7 +1155,7 @@ scholars ask."#;
                         }
                     }
                 } else {
-                    panic!("Unexpected error: {}", e);
+                    panic!("Unexpected error: {e}");
                 }
             }
         }

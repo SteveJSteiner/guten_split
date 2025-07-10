@@ -7,7 +7,6 @@ use tracing::{debug, info, warn};
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use futures::stream;
-use tokio::io::{AsyncReadExt, BufReader};
 use ignore::{WalkBuilder, WalkState};
 
 /// Configuration for file discovery behavior
@@ -23,7 +22,6 @@ pub struct DiscoveryConfig {
 #[derive(Debug, Clone)]
 pub struct FileValidation {
     pub path: PathBuf,
-    pub is_valid_utf8: bool,
     pub error: Option<String>,
 }
 
@@ -72,7 +70,7 @@ pub fn discover_files_parallel(
         // WHY: Use ignore::WalkBuilder (from ripgrep) for optimized deep directory traversal
         // Stream files as they're discovered for true overlapped processing
         let walker = WalkBuilder::new(&root_path)
-            .threads((num_cpus::get() / 2).max(1)) // Use all available CPU cores
+            .threads((num_cpus::get() / 2).max(1)) // Use no more than half of available CPU cores
             .follow_links(false) // Don't follow symlinks
             .hidden(false) // Don't skip hidden files/dirs (some Gutenberg files might be in hidden dirs)
             .ignore(false) // Don't read .gitignore files
@@ -158,7 +156,6 @@ async fn validate_file_standalone(
                 warn!("{}", error);
                 return Ok(FileValidation {
                     path: path.to_path_buf(),
-                    is_valid_utf8: false,
                     error: Some(error),
                 });
             }
@@ -172,77 +169,19 @@ async fn validate_file_standalone(
             } else {
                 return Ok(FileValidation {
                     path: path.to_path_buf(),
-                    is_valid_utf8: false,
                     error: Some(error),
                 });
             }
         }
     }
 
-    // Validate UTF-8 encoding by reading a sample
-    let is_valid_utf8 = match check_utf8_encoding_standalone(path).await {
-        Ok(valid) => valid,
-        Err(e) => {
-            let error = format!("UTF-8 validation failed for {}: {}", path.display(), e);
-            warn!("{}", error);
-            
-            if config.fail_fast {
-                return Err(anyhow::anyhow!(error));
-            } else {
-                return Ok(FileValidation {
-                    path: path.to_path_buf(),
-                    is_valid_utf8: false,
-                    error: Some(error),
-                });
-            }
-        }
-    };
-
+    // Skip pre-validation - UTF-8 validation will happen naturally during processing
     Ok(FileValidation {
         path: path.to_path_buf(),
-        is_valid_utf8,
         error: None,
     })
 }
 
-/// Standalone UTF-8 encoding check
-async fn check_utf8_encoding_standalone(path: &Path) -> Result<bool> {
-    // WHY: Reading only first 4KB is sufficient to detect encoding issues in most cases
-    // and avoids loading entire large files into memory during discovery
-    const SAMPLE_SIZE: usize = 4096;
-    
-    match tokio::fs::File::open(path).await {
-        Ok(file) => {
-            let mut reader = BufReader::new(file);
-            let mut buffer = vec![0; SAMPLE_SIZE];
-            
-            match reader.read(&mut buffer).await {
-                Ok(bytes_read) => {
-                    // Only check the bytes we actually read
-                    let sample = &buffer[..bytes_read];
-                    
-                    match std::str::from_utf8(sample) {
-                        Ok(_) => {
-                            debug!("UTF-8 validation passed for: {}", path.display());
-                            Ok(true)
-                        }
-                        Err(e) => {
-                            let error_msg = format!("UTF-8 validation failed for {}: {}", path.display(), e);
-                            debug!("{}", error_msg);
-                            Err(anyhow::anyhow!(error_msg))
-                        }
-                    }
-                }
-                Err(e) => {
-                    Err(anyhow::anyhow!("Failed to read file for UTF-8 validation: {}", e))
-                }
-            }
-        }
-        Err(e) => {
-            Err(anyhow::anyhow!("Failed to open file for UTF-8 validation: {}", e))
-        }
-    }
-}
 
 /// Internal state for file discovery iteration
 struct DiscoveryState {
@@ -320,8 +259,7 @@ impl DiscoveryState {
                     warn!("{}", error);
                     return Ok(FileValidation {
                         path,
-                        is_valid_utf8: false,
-                        error: Some(error),
+                            error: Some(error),
                     });
                 }
             }
@@ -334,75 +272,19 @@ impl DiscoveryState {
                 } else {
                     return Ok(FileValidation {
                         path,
-                        is_valid_utf8: false,
-                        error: Some(error),
+                            error: Some(error),
                     });
                 }
             }
         }
 
-        // Validate UTF-8 encoding by reading a sample
-        let is_valid_utf8 = match self.check_utf8_encoding(&path).await {
-            Ok(valid) => valid,
-            Err(e) => {
-                let error = format!("UTF-8 validation failed for {}: {}", path.display(), e);
-                warn!("{}", error);
-                
-                if self.config.fail_fast {
-                    return Err(anyhow::anyhow!(error));
-                } else {
-                    return Ok(FileValidation {
-                        path,
-                        is_valid_utf8: false,
-                        error: Some(error),
-                    });
-                }
-            }
-        };
-
+        // Skip pre-validation - UTF-8 validation will happen naturally during processing
         Ok(FileValidation {
             path,
-            is_valid_utf8,
             error: None,
         })
     }
 
-    async fn check_utf8_encoding(&self, path: &Path) -> Result<bool> {
-        // WHY: Reading only first 4KB is sufficient to detect encoding issues in most cases
-        // and avoids loading entire large files into memory during discovery
-        const SAMPLE_SIZE: usize = 4096;
-        
-        match tokio::fs::File::open(path).await {
-            Ok(file) => {
-                let mut reader = BufReader::new(file);
-                let mut buffer = vec![0; SAMPLE_SIZE];
-                
-                match reader.read(&mut buffer).await {
-                    Ok(bytes_read) => {
-                        // Only check the bytes we actually read
-                        let sample = &buffer[..bytes_read];
-                        
-                        match std::str::from_utf8(sample) {
-                            Ok(_) => {
-                                debug!("UTF-8 validation passed for: {}", path.display());
-                                Ok(true)
-                            }
-                            Err(_) => {
-                                debug!("UTF-8 validation failed for: {}", path.display());
-                                Ok(false)
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        Err(anyhow::anyhow!("Failed to read file for UTF-8 validation: {}", e))
-                    }
-                }
-            }
-            Err(e) => {
-                Err(anyhow::anyhow!("Failed to open file for UTF-8 validation: {}", e))
-            }
-        }
-    }
 }
 
 /// Collect all discovered files into a Vec for easier processing
@@ -425,7 +307,7 @@ pub async fn collect_discovered_files(
     }
     
     info!("Discovered {} files total", files.len());
-    let valid_count = files.iter().filter(|f| f.is_valid_utf8 && f.error.is_none()).count();
+    let valid_count = files.iter().filter(|f| f.error.is_none()).count();
     let invalid_count = files.len() - valid_count;
     
     if invalid_count > 0 {
@@ -459,7 +341,7 @@ pub async fn collect_discovered_files_parallel(
     }
     
     info!("Parallel discovery completed: {} files total", files.len());
-    let valid_count = files.iter().filter(|f| f.is_valid_utf8 && f.error.is_none()).count();
+    let valid_count = files.iter().filter(|f| f.error.is_none()).count();
     let invalid_count = files.len() - valid_count;
     
     if invalid_count > 0 {
@@ -481,7 +363,7 @@ pub async fn find_gutenberg_files<P: AsRef<Path>>(root_dir: P) -> Result<Vec<Pat
     // Return only valid files
     let valid_files: Vec<PathBuf> = validations
         .into_iter()
-        .filter(|v| v.is_valid_utf8 && v.error.is_none())
+        .filter(|v| v.error.is_none())
         .map(|v| v.path)
         .collect();
     
@@ -525,7 +407,7 @@ mod tests {
         let files = collect_discovered_files(temp_dir.path(), config).await.unwrap();
         assert_eq!(files.len(), 2);
         
-        let valid_files: Vec<_> = files.iter().filter(|f| f.is_valid_utf8 && f.error.is_none()).collect();
+        let valid_files: Vec<_> = files.iter().filter(|f| f.error.is_none()).collect();
         assert_eq!(valid_files.len(), 2);
         
         let file_names: Vec<String> = files.iter()
@@ -551,11 +433,7 @@ mod tests {
         assert_eq!(files.len(), 2);
         
         let valid_file = files.iter().find(|f| f.path.file_name().unwrap() == "valid-0.txt").unwrap();
-        assert!(valid_file.is_valid_utf8);
         assert!(valid_file.error.is_none());
-        
-        let invalid_file = files.iter().find(|f| f.path.file_name().unwrap() == "invalid-0.txt").unwrap();
-        assert!(!invalid_file.is_valid_utf8);
     }
 
     #[tokio::test]
@@ -563,22 +441,16 @@ mod tests {
         let temp_dir = TempDir::new().unwrap();
         let config = DiscoveryConfig { fail_fast: true };
         
-        // Create a file and then remove read permissions to simulate permission error
-        let file_path = create_test_file(temp_dir.path(), "restricted-0.txt", "content").await.unwrap();
+        // Create a file that will be discovered successfully
+        let _file_path = create_test_file(temp_dir.path(), "valid-0.txt", "content").await.unwrap();
         
-        // Remove read permissions (Unix-specific test)
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = std::fs::metadata(&file_path).unwrap().permissions();
-            perms.set_mode(0o0000);
-            std::fs::set_permissions(&file_path, perms).unwrap();
-            
-            let result = collect_discovered_files(temp_dir.path(), config).await;
-            
-            // Should fail fast on permission error
-            assert!(result.is_err());
-        }
+        let result = collect_discovered_files(temp_dir.path(), config).await;
+        
+        // Discovery should succeed (fail_fast now applies to processing, not discovery)
+        assert!(result.is_ok());
+        let files = result.unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files[0].error.is_none());
     }
 
     #[tokio::test]
@@ -596,7 +468,7 @@ mod tests {
         let files = collect_discovered_files_parallel(temp_dir.path(), config).await.unwrap();
         assert_eq!(files.len(), 3);
         
-        let valid_files: Vec<_> = files.iter().filter(|f| f.is_valid_utf8 && f.error.is_none()).collect();
+        let valid_files: Vec<_> = files.iter().filter(|f| f.error.is_none()).collect();
         assert_eq!(valid_files.len(), 3);
         
         let file_names: Vec<String> = files.iter()
@@ -654,10 +526,6 @@ mod tests {
         assert_eq!(files.len(), 2);
         
         let valid_file = files.iter().find(|f| f.path.file_name().unwrap() == "valid-0.txt").unwrap();
-        assert!(valid_file.is_valid_utf8);
         assert!(valid_file.error.is_none());
-        
-        let invalid_file = files.iter().find(|f| f.path.file_name().unwrap() == "invalid-0.txt").unwrap();
-        assert!(!invalid_file.is_valid_utf8);
     }
 }

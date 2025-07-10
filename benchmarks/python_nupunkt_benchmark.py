@@ -31,8 +31,10 @@ def process_file_with_nupunkt(file_path: str, segmenter) -> Dict[str, Any]:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
         
-        # Segment sentences with nupunkt
+        # Time the sentence detection separately
+        sentence_detection_start = time.time()
         sentences = segmenter.tokenize(content)
+        sentence_detection_time = time.time() - sentence_detection_start
         
         # Calculate basic stats
         chars_processed = len(content)
@@ -40,20 +42,25 @@ def process_file_with_nupunkt(file_path: str, segmenter) -> Dict[str, Any]:
         processing_time = time.time() - start_time
         
         return {
-            "file_path": file_path,
+            "path": file_path,
             "chars_processed": chars_processed,
-            "sentence_count": sentence_count,
+            "sentences_detected": sentence_count,
             "processing_time_ms": processing_time * 1000,
-            "throughput_chars_per_sec": chars_processed / processing_time if processing_time > 0 else 0,
-            "success": True,
-            "sentences": sentences[:5] if len(sentences) > 5 else sentences  # Sample for accuracy comparison
+            "sentence_detection_time_ms": sentence_detection_time * 1000,
+            "chars_per_sec": chars_processed / processing_time if processing_time > 0 else 0,
+            "status": "success",
+            "error": None
         }
     except Exception as e:
         return {
-            "file_path": file_path,
+            "path": file_path,
+            "chars_processed": 0,
+            "sentences_detected": 0,
+            "processing_time_ms": (time.time() - start_time) * 1000,
+            "sentence_detection_time_ms": 0,
+            "chars_per_sec": 0,
+            "status": "failed",
             "error": str(e),
-            "success": False,
-            "processing_time_ms": (time.time() - start_time) * 1000
         }
 
 def main():
@@ -100,9 +107,9 @@ def main():
         result = process_file_with_nupunkt(file_path, segmenter)
         results.append(result)
         
-        if result["success"]:
+        if result["status"] == "success":
             total_chars += result["chars_processed"]
-            total_sentences += result["sentence_count"]
+            total_sentences += result["sentences_detected"]
             successful_files += 1
         else:
             failed_files += 1

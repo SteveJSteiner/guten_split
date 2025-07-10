@@ -19,7 +19,7 @@ async fn test_restart_functionality_integration() {
     
     for file_name in &test_files {
         let file_path = root_path.join(file_name);
-        let content = format!("Test content for {}. This is a sentence. Another sentence here.", file_name);
+        let content = format!("Test content for {file_name}. This is a sentence. Another sentence here.");
         fs::write(&file_path, content).await.unwrap();
     }
     
@@ -31,7 +31,7 @@ async fn test_restart_functionality_integration() {
     for file_name in &test_files {
         let file_path = root_path.join(file_name);
         let should_process = should_process_file(&file_path, &restart_log, false).await.unwrap();
-        assert!(should_process, "File {} should be processed initially", file_name);
+        assert!(should_process, "File {file_name} should be processed initially");
     }
     
     // Test 2: Simulate processing files by creating aux files and marking completed
@@ -57,7 +57,7 @@ async fn test_restart_functionality_integration() {
     for file_name in &test_files {
         let file_path = root_path.join(file_name);
         let should_process = should_process_file(&file_path, &restart_log, false).await.unwrap();
-        assert!(!should_process, "File {} should be skipped on restart", file_name);
+        assert!(!should_process, "File {file_name} should be skipped on restart");
     }
     
     // Test 4: Overwrite flags behavior
@@ -66,7 +66,7 @@ async fn test_restart_functionality_integration() {
         
         // With overwrite_all=true, should process
         let should_process = should_process_file(&file_path, &restart_log, true).await.unwrap();
-        assert!(should_process, "File {} should be processed with overwrite_all=true", file_name);
+        assert!(should_process, "File {file_name} should be processed with overwrite_all=true");
     }
     
     // Test 5: Missing aux file should trigger reprocessing
@@ -145,8 +145,8 @@ async fn test_cli_restart_integration() {
     
     // Create test files
     for i in 1..=5 {
-        let file_path = root_path.join(format!("test{}-0.txt", i));
-        let content = format!("Test file {} content. This is a sentence. Another sentence.", i);
+        let file_path = root_path.join(format!("test{i}-0.txt"));
+        let content = format!("Test file {i} content. This is a sentence. Another sentence.");
         fs::write(&file_path, content).await.unwrap();
     }
     
@@ -156,11 +156,11 @@ async fn test_cli_restart_integration() {
     
     // Simulate processing files
     for i in 1..=5 {
-        let file_path = root_path.join(format!("test{}-0.txt", i));
+        let file_path = root_path.join(format!("test{i}-0.txt"));
         let aux_path = generate_aux_file_path(&file_path);
         
         // Create aux file (simulating sentence processing)
-        let aux_content = format!("0\tTest file {} content.\t(1,1,1,20)\n1\tThis is a sentence.\t(1,21,1,40)\n2\tAnother sentence.\t(1,41,1,58)\n", i);
+        let aux_content = format!("0\tTest file {i} content.\t(1,1,1,20)\n1\tThis is a sentence.\t(1,21,1,40)\n2\tAnother sentence.\t(1,41,1,58)\n");
         fs::write(&aux_path, aux_content).await.unwrap();
         
         // Mark as completed
@@ -175,9 +175,9 @@ async fn test_cli_restart_integration() {
     assert_eq!(restart_log.completed_count(), 5);
     
     for i in 1..=5 {
-        let file_path = root_path.join(format!("test{}-0.txt", i));
+        let file_path = root_path.join(format!("test{i}-0.txt"));
         let should_process = should_process_file(&file_path, &restart_log, false).await.unwrap();
-        assert!(!should_process, "File {} should be skipped on second run", i);
+        assert!(!should_process, "File {i} should be skipped on second run");
     }
     
     // Modify one file and verify it gets reprocessed
@@ -212,7 +212,7 @@ async fn test_restart_log_concurrent_operations() {
     // Create test files
     let file_paths: Vec<PathBuf> = (1..=10)
         .map(|i| {
-            let file_path = root_path.join(format!("test{}-0.txt", i));
+            let file_path = root_path.join(format!("test{i}-0.txt"));
             file_path
         })
         .collect();
