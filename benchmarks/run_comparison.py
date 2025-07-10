@@ -456,7 +456,7 @@ def main():
     # Run Python benchmarks (using venv python)
     python_benchmarks = [
         #("python_pysbd_benchmark.py", "python_pysbd_stats.json"),
-        ("python_spacy_benchmark.py", "python_spacy_stats.json"),
+        #("python_spacy_benchmark.py", "python_spacy_stats.json"),
         ("python_nupunkt_benchmark.py", "python_nupunkt_stats.json")
     ]
     

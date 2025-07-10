@@ -392,7 +392,7 @@ impl DialogStateMachine {
         let mut remaining_text_handled = false;
         
         // PHASE 1: Use incremental position tracker instead of O(N) position conversions
-        let mut position_tracker = PositionTracker::new(text);
+        let mut position_tracker = PositionTracker::new(text);        
         
         while position_byte.0 < text.len() {
             let pattern = match self.patterns.get(&current_state) {
@@ -411,6 +411,7 @@ impl DialogStateMachine {
                 
                 // Determine what type of match this is and next state
                 let matched_text = &text[match_start_byte.0..match_end_byte.0];
+               
                 
                 let (match_type, next_state) = self.classify_match(matched_text, &current_state, text.as_bytes(), match_start_byte.0);
                 
@@ -429,7 +430,7 @@ impl DialogStateMachine {
                                     // This is a false positive - don't create sentence boundary
                                     // Continue processing from current position without advancing sentence_start_byte
                                 } else {
-                                    // PHASE 1: Use incremental position tracker instead of O(N) conversions
+                                    // Use incremental position tracker instead of O(N) conversions
                                     let (__start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
                                         .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
                                     let (__end_char, end_line, end_col) = position_tracker.advance_to_byte(sentence_end_byte)
@@ -461,8 +462,8 @@ impl DialogStateMachine {
                     }
                     MatchType::DialogEnd => {
                         // Dialog end creates a sentence boundary
-                        // Use special logic for dialog endings to include closing quotes
-                        let sentence_end_byte = self.find_dialog_sent_end(matched_text)
+                        // Use separator logic to find where current sentence ends
+                        let sentence_end_byte = self.find_sent_sep_start(matched_text)
                             .map(|sep_offset| match_start_byte.advance(sep_offset))
                             .unwrap_or(match_start_byte);
                         
@@ -712,27 +713,6 @@ impl DialogStateMachine {
         None
     }
     
-    fn find_dialog_sent_end(&self, matched_boundary: &str) -> Option<usize> {
-        // For dialog endings, include the closing quote in the sentence content
-        // Unlike find_sent_sep_start which finds separator start, this finds sentence content end
-        
-        if let Some((hard_sep_pos, _)) = self.find_hard_separator(matched_boundary) {
-            return Some(hard_sep_pos);
-        }
-        
-        // Find the closing quote and include it in the sentence
-        let closing_quotes = ["\"", "'", "\u{201D}", "\u{2019}", ")", "]", "}"];
-        
-        for quote in &closing_quotes {
-            if let Some(quote_pos) = matched_boundary.find(quote) {
-                // Return position after the quote to include it in sentence content
-                return Some(quote_pos + quote.len());
-            }
-        }
-        
-        // Fallback to original logic if no quotes found
-        self.find_sent_sep_start(matched_boundary)
-    }
     
     fn find_sent_sep_end(&self, matched_boundary: &str) -> Option<usize> {
         // Find where SENT_SEP ends within a SENT_END + SENT_SEP + SENT_START match
@@ -741,7 +721,7 @@ impl DialogStateMachine {
             return Some(hard_sep_pos + sep_len); // After the separator
         }
         
-        // Find the end of whitespace sequence
+        // Find the end of whitespace sequence - where SENT_START begins
         let mut in_whitespace = false;
         
         for (i, ch) in matched_boundary.char_indices() {
@@ -1047,5 +1027,137 @@ she had been tasting in a corner with evident satisfaction."#;
         assert!(sentences[5].raw_content.contains("In what directions"));
         assert!(sentences[6].raw_content.contains("S. E. by E."));
         assert!(sentences[8].raw_content.contains("relatively to themselves"));
+    }
+
+    #[test]
+    fn test_actual_backward_seek_repro() {
+        // Reproduce the exact failure pattern from the Gutenberg text
+        // The problematic pattern: 'meet.' "Why should
+        let detector = SentenceDetectorDialog::new().unwrap();
+        let text = r#"S. and B. emend so as to negative the verb 'meet.' "Why should
+Hrothgar weep if he expects to meet Beowulf again?" both these
+scholars ask."#;
+        
+        println!("Testing actual backward seek reproduction case:");
+        println!("Text: '{}'", text.replace('\n', "\\n"));
+        
+        match detector.detect_sentences_borrowed(text) {
+            Ok(sentences) => {
+                println!("  Success: {} sentences", sentences.len());
+                for (i, sentence) in sentences.iter().enumerate() {
+                    println!("    {}: '{}'", i, sentence.raw_content);
+                }
+            }
+            Err(e) => {
+                println!("  Error: {}", e);
+                if e.to_string().contains("Cannot seek backwards") {
+                    println!("  ACTUAL BACKWARD SEEK BUG REPRODUCED!");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_backward_seek_minimal_reproduction() {
+        let detector = get_detector();
+        
+        // Create a minimal case that demonstrates the backward seek issue
+        // Start with a simple case and add complexity until we reproduce the problem
+        let test_cases = vec![
+            // Simple case - should work
+            "Hello. World.",
+            // Case with whitespace
+            "Hello. World. Another.",
+            // Case with hard separator
+            "Hello.\n\nWorld.",
+            // Case with dialog
+            "He said. \"Hello.\" She replied.",
+            // Case with colon + hard separator (from the original problem)
+            "He said:\n\n\"Hello.\"\n\n\"World.\"",
+            
+            // DIALOG HARD END PATTERN TESTS
+            // Test each type of dialog hard end pattern to see if they all have the same issue
+            
+            // 1. Single quote (known failing case)
+            "verb 'meet.' \"Why should",
+            
+            // 2. Double quote  
+            "verb \"meet.\" 'Why should",
+            
+            // 3. Smart double quote (opening: ", closing: ")
+            "verb \u{201C}meet.\u{201D} \"Why should",
+            
+            // 4. Smart single quote (opening: ', closing: ')
+            "verb \u{2018}meet.\u{2019} \"Why should",
+            
+            // 5. Round parentheses
+            "verb (meet.) \"Why should",
+            
+            // 6. Square brackets
+            "verb [meet.] \"Why should",
+            
+            // 7. Curly braces
+            "verb {meet.} \"Why should",
+        ];
+        
+        let mut failed_cases = Vec::new();
+        
+        for (i, test_case) in test_cases.iter().enumerate() {
+            println!("Testing case {}: {}", i, test_case.replace('\n', "\\n"));
+            let result = detector.detect_sentences_borrowed(test_case);
+            match result {
+                Ok(sentences) => {
+                    println!("  Success: {} sentences", sentences.len());
+                    for (j, sentence) in sentences.iter().enumerate() {
+                        println!("    {}: '{}'", j, sentence.raw_content.replace('\n', "\\n"));
+                    }
+                }
+                Err(e) => {
+                    println!("  Error: {}", e);
+                    if e.to_string().contains("Cannot seek backwards") {
+                        println!("  BACKWARD SEEK BUG FOUND!");
+                        failed_cases.push((i, test_case, e.to_string()));
+                    } else {
+                        println!("  Other error type");
+                    }
+                }
+            }
+        }
+        
+        println!("\n=== CHARACTERIZATION RESULTS ===");
+        if failed_cases.is_empty() {
+            println!("No backward seek issues found in minimal test cases");
+        } else {
+            println!("Found {} cases with backward seek issues:", failed_cases.len());
+            for (i, test_case, error) in &failed_cases {
+                println!("  Case {}: '{}' - {}", i, test_case.replace('\n', "\\n"), error);
+            }
+        }
+        
+        // If we get here, none of the minimal cases reproduced the issue
+        println!("Minimal cases didn't reproduce the issue, trying the full file");
+        let problem_text = std::fs::read_to_string("exploration/problem_repro-0.txt")
+            .expect("Failed to read problem_repro-0.txt");
+        
+        let result = detector.detect_sentences_borrowed(&problem_text);
+        match result {
+            Ok(sentences) => {
+                println!("Full file processed successfully: {} sentences", sentences.len());
+            }
+            Err(e) => {
+                println!("Full file error: {}", e);
+                if e.to_string().contains("Cannot seek backwards") {
+                    println!("REPRODUCED WITH FULL FILE");
+                    // Extract the exact position where it fails
+                    if let Some(pos_info) = e.to_string().split("current ").nth(1) {
+                        if let Some(positions) = pos_info.split(" > target ").collect::<Vec<_>>().get(0..2) {
+                            println!("Backward seek: current {} > target {}", positions[0], positions[1]);
+                        }
+                    }
+                } else {
+                    panic!("Unexpected error: {}", e);
+                }
+            }
+        }
     }
 }
