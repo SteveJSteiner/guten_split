@@ -315,6 +315,7 @@ async fn process_single_file_restart(
     
     let sentence_count = sentences.len() as u64;
     let byte_count = content.len() as u64;
+    let char_count = content.chars().count() as u64;
     
     // Generate auxiliary file
     let aux_path = crate::incremental::generate_aux_file_path(path);
@@ -323,14 +324,14 @@ async fn process_single_file_restart(
     let processing_time = start_time.elapsed();
     let processing_time_ms = processing_time.as_millis() as u64;
     let chars_per_sec = if processing_time.as_secs_f64() > 0.0 {
-        byte_count as f64 / processing_time.as_secs_f64()
+        char_count as f64 / processing_time.as_secs_f64()
     } else {
         0.0
     };
     
     let file_stats = FileStats {
         path: path.to_string_lossy().to_string(),
-        chars_processed: byte_count,
+        chars_processed: char_count,
         sentences_detected: sentence_count,
         processing_time_ms,
         sentence_detection_time_ms: sentence_detection_time.as_millis() as u64,
@@ -339,7 +340,7 @@ async fn process_single_file_restart(
         error: None,
     };
     
-    //info!("Processed {}: {} sentences, {} bytes", path.display(), sentence_count, byte_count);
+    //info!("Processed {}: {} sentences, {} chars", path.display(), sentence_count, char_count);
     let detection_ms = sentence_detection_time.as_millis();
     if !quiet {
         println!(

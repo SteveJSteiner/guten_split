@@ -75,10 +75,66 @@
 
 **Result**: Seams now successfully processes all Gutenberg text files without backward seek errors, enabling accurate character count comparisons.
 
+### Post-Fix Benchmark Results
+
+After fixing the dialog state machine bug, the benchmark comparison now runs successfully:
+
+**Seams**: 39/39 files, 32,268,339 chars, 230,523 sentences
+**Nupunkt**: 39/39 files, 31,043,966 chars, 267,924 sentences
+
+**Character Count Discrepancy**: ~1.2M characters (32.27M vs 31.04M)
+- Seams processes ~3.9% more characters than nupunkt
+- This represents the core discrepancy that still needs investigation
+
+**Sentence Count Differences**: Significant variance in sentence detection
+- Seams: 230,523 sentences (avg: 5,910.8 per file)  
+- Nupunkt: 267,924 sentences (avg: 6,869.8 per file)
+- Nupunkt detects ~16% more sentences than seams
+
+The dialog bug fix enables this investigation to proceed with complete data from both tools.
+
+## Character Count Discrepancy Investigation - COMPLETED
+
+**Final Root Cause Analysis**: Seams was counting **bytes** instead of **Unicode characters** while nupunkt counted actual Unicode characters.
+
+### Investigation Process
+
+1. **Created minimal character counting tools** to isolate the issue from sentence detection complexity
+2. **File-by-file comparison** revealed systematic ~4% difference across all files
+3. **Code analysis** found seams using `content.len()` (bytes) while nupunkt used `len(content)` (Unicode chars)
+4. **Line ending analysis** identified remaining acceptable differences due to `\r\n` handling
+
+### Resolution
+
+**Fixed in `src/main.rs`**: Changed `let byte_count = content.len() as u64;` to properly count Unicode characters:
+```rust
+let sentence_count = sentences.len() as u64;
+let byte_count = content.len() as u64;  // Keep for file I/O metrics
+let char_count = content.chars().count() as u64;  // Actual Unicode character count
+```
+
+And updated `FileStats` assignment:
+```rust
+chars_processed: char_count,  // Was: byte_count
+```
+
+### Final Results
+
+- **Before fix**: 32,268,339 bytes vs 31,043,966 chars (~1.2M difference, 3.9%)
+- **After fix**: 31,650,610 chars vs 31,043,966 chars (~600K difference, 1.9%)
+
+**Remaining 1.9% difference is acceptable**: Due to line ending normalization differences:
+- Seams (memmap2): Counts `\r\n` as 2 characters (raw file reading)
+- Nupunkt (Python): Counts `\r\n` as 1 character (text mode auto-conversion)
+
+This represents legitimate implementation differences, not errors.
+
 ## Pre-commit checklist:
 - [x] Root cause of processing failure identified (dialog state machine bug)
 - [x] Dialog state machine bug fixed - replaced find_dialog_sent_end() with find_sent_sep_start() to respect SENT_SEP invariant
-- [x] Character count discrepancy investigation can now proceed - seams processes all files successfully
-- [x] Fair comparison methodology verified - backward seek bug eliminated  
-- [x] Documentation updated with findings and solution
+- [x] **Character count discrepancy RESOLVED**: Fixed bytes vs Unicode character counting in seams
+- [x] **Core fix applied**: Updated `src/main.rs` to use `content.chars().count()` for `chars_processed` field
+- [x] Fair comparison methodology verified - both tools now count Unicode characters correctly
+- [x] Remaining 1.9% difference documented and deemed acceptable (line ending handling differences)  
+- [x] Documentation updated with complete findings and solution
 - [x] **ZERO WARNINGS**: All tests pass, clippy warnings resolved
