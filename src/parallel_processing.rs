@@ -37,7 +37,11 @@ pub async fn write_auxiliary_file_borrowed(
     sentences: &[crate::sentence_detector::DetectedSentenceBorrowed<'_>],
     _detector: &crate::sentence_detector::dialog_detector::SentenceDetectorDialog,
 ) -> Result<()> {
-    let file = tokio::fs::File::create(aux_path).await?;
+    let file = tokio::fs::File::create(aux_path).await
+        .map_err(|e| anyhow::anyhow!(
+            "Cannot create output file: {}\nError: {}\n\nSUGGESTIONS:\n• Check write permissions for the directory\n• Ensure sufficient disk space is available\n• Verify the directory exists and is writable",
+            aux_path.display(), e
+        ))?;
     let mut writer = BufWriter::new(file);
     
     for sentence in sentences {
@@ -50,11 +54,23 @@ pub async fn write_auxiliary_file_borrowed(
             sentence.span.end_line,
             sentence.span.end_col
         );
-        writer.write_all(formatted_line.as_bytes()).await?;
-        writer.write_all(b"\n").await?;
+        writer.write_all(formatted_line.as_bytes()).await
+            .map_err(|e| anyhow::anyhow!(
+                "Cannot write to output file: {}\nError: {}\n\nSUGGESTIONS:\n• Check available disk space\n• Ensure write permissions are maintained\n• File system may be full or read-only",
+                aux_path.display(), e
+            ))?;
+        writer.write_all(b"\n").await
+            .map_err(|e| anyhow::anyhow!(
+                "Cannot write to output file: {}\nError: {}\n\nSUGGESTIONS:\n• Check available disk space\n• Ensure write permissions are maintained\n• File system may be full or read-only",
+                aux_path.display(), e
+            ))?;
     }
     
-    writer.flush().await?;
+    writer.flush().await
+        .map_err(|e| anyhow::anyhow!(
+            "Cannot finalize output file: {}\nError: {}\n\nSUGGESTIONS:\n• Check available disk space\n• Ensure write permissions are maintained\n• File system may be full or read-only",
+            aux_path.display(), e
+        ))?;
     Ok(())
 }
 

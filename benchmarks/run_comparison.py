@@ -110,6 +110,11 @@ def run_seams_benchmark(root_dir: str, stats_file: str) -> Dict[str, Any]:
         print(f"   Chars: {chars_processed:,}")
         print(f"   Sentences: {total_sentences:,} (min: {sentence_stats.get('min', 0)}, Q25: {sentence_stats.get('q25', 0)}, avg: {sentence_stats.get('average', 0):.1f}, median: {sentence_stats.get('median', 0):.1f}, Q75: {sentence_stats.get('q75', 0)}, max: {sentence_stats.get('max', 0)})")
         print(f"   Throughput: {throughput:,.0f} chars/sec ({throughput/(1024*1024):.2f} MB/sec)")
+        
+        # Show sentence detection throughput if available
+        sentence_detection_throughput = stats.get("sentence_detection_chars_per_sec", 0)
+        if sentence_detection_throughput > 0:
+            print(f"   Sentence detection: {sentence_detection_throughput:,.0f} chars/sec ({sentence_detection_throughput/(1024*1024):.2f} MB/sec)")
         if files_failed > 0:
             print(f"   ⚠️  {files_failed} file(s) failed:")
             for file_stat in stats.get("file_stats", []):

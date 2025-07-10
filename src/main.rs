@@ -29,12 +29,16 @@ struct RunStats {
     run_start: String,
     /// Total processing time in milliseconds
     total_processing_time_ms: u64,
+    /// Total sentence detection time in milliseconds (subset of total_processing_time_ms)
+    total_sentence_detection_time_ms: u64,
     /// Total characters processed across all files
     total_chars_processed: u64,
     /// Total sentences detected across all files
     total_sentences_detected: u64,
     /// Overall throughput in characters per second
     overall_chars_per_sec: f64,
+    /// Sentence detection throughput in characters per second
+    sentence_detection_chars_per_sec: f64,
     /// Number of files successfully processed
     files_processed: u64,
     /// Number of files skipped (already complete)
@@ -240,6 +244,16 @@ async fn process_with_overlapped_pipeline(
         println!("Found {} files matching pattern *-0.txt", discovered_files.len());
         println!("Valid files: {}, Files with issues: {}", valid_files.len(), invalid_files.len());
         println!("Restart log: {} files tracked as completed", restart_log.completed_count());
+        
+        // WHY: Provide helpful guidance when no files are found  
+        if discovered_files.is_empty() {
+            println!("\nNo *-0.txt files found in directory tree.");
+            println!("SUGGESTIONS:");
+            println!("• Verify your directory contains Project Gutenberg files ending in '-0.txt'");
+            println!("• Check subdirectories - seams searches recursively");
+            println!("• Example valid filenames: 'pg1234-0.txt', 'alice-0.txt'");
+            println!("• Try: find {} -name '*-0.txt' -type f", args.root_dir.display());
+        }
     }
     
     // WHY: Demonstrate public API usage for external developers (minimal example)
@@ -303,14 +317,29 @@ async fn process_single_file_restart(
     let start_time = std::time::Instant::now();
     
     // Process the file directly
-    let file = std::fs::File::open(path)?;
-    let mmap = unsafe { memmap2::MmapOptions::new().map(&file)? };
+    let file = std::fs::File::open(path)
+        .map_err(|e| anyhow::anyhow!(
+            "Cannot read file: {}\nError: {}\n\nSUGGESTIONS:\n• Check file permissions (should be readable)\n• Ensure file is not locked by another process\n• Verify disk space is available",
+            path.display(), e
+        ))?;
+    let mmap = unsafe { memmap2::MmapOptions::new().map(&file) }
+        .map_err(|e| anyhow::anyhow!(
+            "Cannot memory-map file: {}\nError: {}\n\nSUGGESTIONS:\n• File may be too large for available memory\n• Check file is not corrupted\n• Ensure sufficient virtual memory is available",
+            path.display(), e
+        ))?;
     let content = std::str::from_utf8(&mmap)
-        .map_err(|_| anyhow::anyhow!("Invalid UTF-8 in file: {}", path.display()))?;
+        .map_err(|_| anyhow::anyhow!(
+            "File contains invalid UTF-8: {}\n\nSUGGESTIONS:\n• Ensure file is a text file, not binary\n• Check file encoding - Project Gutenberg files should be UTF-8\n• File may be corrupted during download",
+            path.display()
+        ))?;
 
     // WHY: Measure sentence detection time separately from total processing time
     let sentence_detection_start = std::time::Instant::now();
-    let sentences = detector.detect_sentences_borrowed(content)?;
+    let sentences = detector.detect_sentences_borrowed(content)
+        .map_err(|e| anyhow::anyhow!(
+            "Sentence detection failed for: {}\nError: {}\n\nSUGGESTIONS:\n• File may contain unusual text patterns that confuse the detector\n• Ensure file contains valid Project Gutenberg text format\n• Check file is not corrupted or truncated",
+            path.display(), e
+        ))?;
     let sentence_detection_time = sentence_detection_start.elapsed();
     
     let sentence_count = sentences.len() as u64;
@@ -361,7 +390,37 @@ async fn process_single_file_restart(
 #[derive(Parser, Debug)]
 #[command(name = "seams")]
 #[command(about = "High-throughput sentence extractor for Project Gutenberg texts")]
-#[command(long_about = "Seams is a high-performance CLI tool for extracting sentences from Project Gutenberg texts.\n\nIt recursively scans for *-0.txt files, detects sentence boundaries using a dialog-aware\nsentence detector, and outputs normalized sentences with span metadata to _seams.txt files.\n\nDesigned for narrative analysis pipelines with >50MB/s throughput.\n\nEXAMPLES:\n  seams ./gutenberg-mirror/            # Process all *-0.txt files\n  seams ./texts --overwrite-all        # Reprocess all files\n  seams ./texts --fail-fast            # Stop on first error\n  seams ./texts --no-progress          # Quiet mode for automation\n  seams ./texts --stats-out bench.json # Custom stats output")]
+#[command(long_about = "Seams is a high-performance CLI tool for extracting sentences from Project Gutenberg texts.
+
+It recursively scans for *-0.txt files, detects sentence boundaries using a dialog-aware
+sentence detector, and outputs normalized sentences with span metadata to _seams.txt files.
+
+Designed for narrative analysis pipelines.
+
+BASIC USAGE:
+  seams /path/to/gutenberg/                    # Process all *-0.txt files in directory tree
+  seams ~/Downloads/gutenberg-mirror/          # Process entire Gutenberg mirror
+
+COMMON WORKFLOWS:
+  seams ./texts --overwrite-all                # Reprocess all files (ignore existing outputs)
+  seams ./texts --fail-fast                    # Stop immediately on any error
+  seams ./texts --quiet                        # Minimal output for scripts/automation
+  seams ./texts --no-progress                  # Disable progress bars (CI-friendly)
+
+PERFORMANCE & DEBUGGING:
+  seams ./texts --stats-out benchmark.json     # Save detailed performance metrics
+  seams ./texts --clear-restart-log            # Clear resume state, reprocess everything
+
+EXPECTED BEHAVIOR:
+  • Finds files matching *-0.txt pattern recursively
+  • Creates _seams.txt files alongside each input file  
+  • Resumes interrupted runs automatically (use --overwrite-all to disable)
+  • Outputs performance statistics and file counts
+
+TROUBLESHOOTING:
+  • No files found? Check your directory contains *-0.txt files
+  • Permission errors? Ensure write access to input directory
+  • Want to reprocess? Use --overwrite-all or --clear-restart-log")]
 #[command(version)]
 struct Args {
     /// Root directory to scan for *-0.txt files
@@ -410,11 +469,17 @@ async fn main() -> Result<()> {
     
     // WHY: validate root directory exists early to fail fast with clear error
     if !args.root_dir.exists() {
-        anyhow::bail!("Root directory does not exist: {}", args.root_dir.display());
+        anyhow::bail!(
+            "Directory not found: {}\n\nSUGGESTIONS:\n• Check the path spelling and try again\n• Ensure you have read permissions for the parent directory\n• Use an absolute path like '/home/user/gutenberg' if using relative paths",
+            args.root_dir.display()
+        );
     }
     
     if !args.root_dir.is_dir() {
-        anyhow::bail!("Root path is not a directory: {}", args.root_dir.display());
+        anyhow::bail!(
+            "Path exists but is not a directory: {}\n\nSUGGESTIONS:\n• Provide a directory path, not a file path\n• Use the parent directory containing your *-0.txt files\n• Example: seams /path/to/gutenberg-texts/",
+            args.root_dir.display()
+        );
     }
     
     info!("Project setup validation completed successfully");
@@ -453,15 +518,28 @@ async fn main() -> Result<()> {
         0.0
     };
     
+    // WHY: Calculate sentence detection throughput for benchmarking
+    let total_sentence_detection_time_ms: u64 = file_stats.iter()
+        .map(|fs| fs.sentence_detection_time_ms)
+        .sum();
+    
+    let sentence_detection_chars_per_sec = if total_sentence_detection_time_ms > 0 {
+        total_bytes as f64 / (total_sentence_detection_time_ms as f64 / 1000.0)
+    } else {
+        0.0
+    };
+    
     let run_stats = RunStats {
         run_start: SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
             .unwrap()
             .as_secs().to_string(),
         total_processing_time_ms: processing_duration.as_millis() as u64,
+        total_sentence_detection_time_ms,
         total_chars_processed: total_bytes,
         total_sentences_detected: total_sentences,
         overall_chars_per_sec,
+        sentence_detection_chars_per_sec,
         files_processed: processed_files,
         files_skipped: skipped_files,
         files_failed: failed_files,
