@@ -41,10 +41,44 @@ def process_file_with_nupunkt(file_path: str, segmenter) -> Dict[str, Any]:
         sentence_count = len(sentences)
         processing_time = time.time() - start_time
         
+        # Calculate sentence length statistics
+        sentence_length_stats = None
+        if sentences:
+            sentence_lengths = [len(sentence.strip()) for sentence in sentences if sentence.strip()]
+            if sentence_lengths:
+                sentence_lengths.sort()
+                n = len(sentence_lengths)
+                min_length = min(sentence_lengths)
+                max_length = max(sentence_lengths)
+                mean_length = sum(sentence_lengths) / n
+                median_length = sentence_lengths[n // 2] if n % 2 == 1 else (sentence_lengths[n // 2 - 1] + sentence_lengths[n // 2]) / 2
+                p25_idx = int(n * 0.25)
+                p75_idx = int(n * 0.75)
+                p90_idx = int(n * 0.90)
+                p25_length = sentence_lengths[min(p25_idx, n - 1)]
+                p75_length = sentence_lengths[min(p75_idx, n - 1)]
+                p90_length = sentence_lengths[min(p90_idx, n - 1)]
+                
+                # Calculate standard deviation
+                variance = sum((x - mean_length) ** 2 for x in sentence_lengths) / n
+                std_dev = variance ** 0.5
+                
+                sentence_length_stats = {
+                    "min_length": min_length,
+                    "max_length": max_length,
+                    "mean_length": mean_length,
+                    "median_length": median_length,
+                    "p25_length": p25_length,
+                    "p75_length": p75_length,
+                    "p90_length": p90_length,
+                    "std_dev": std_dev
+                }
+        
         return {
             "path": file_path,
             "chars_processed": chars_processed,
             "sentences_detected": sentence_count,
+            "sentence_length_stats": sentence_length_stats,
             "processing_time_ms": processing_time * 1000,
             "sentence_detection_time_ms": sentence_detection_time * 1000,
             "chars_per_sec": chars_processed / processing_time if processing_time > 0 else 0,
@@ -56,6 +90,7 @@ def process_file_with_nupunkt(file_path: str, segmenter) -> Dict[str, Any]:
             "path": file_path,
             "chars_processed": 0,
             "sentences_detected": 0,
+            "sentence_length_stats": None,
             "processing_time_ms": (time.time() - start_time) * 1000,
             "sentence_detection_time_ms": 0,
             "chars_per_sec": 0,
@@ -117,6 +152,46 @@ def main():
     
     total_time = time.time() - benchmark_start
     
+    # Calculate aggregate sentence length statistics
+    all_sentence_lengths = []
+    for result in results:
+        if result["status"] == "success" and result["sentence_length_stats"]:
+            # Approximate individual lengths using mean and count (simplified approach)
+            sentence_count = result["sentences_detected"]
+            mean_length = result["sentence_length_stats"]["mean_length"]
+            for _ in range(sentence_count):
+                all_sentence_lengths.append(mean_length)
+    
+    aggregate_sentence_length_stats = None
+    if all_sentence_lengths:
+        all_sentence_lengths.sort()
+        n = len(all_sentence_lengths)
+        min_length = min(all_sentence_lengths)
+        max_length = max(all_sentence_lengths)
+        mean_length = sum(all_sentence_lengths) / n
+        median_length = all_sentence_lengths[n // 2] if n % 2 == 1 else (all_sentence_lengths[n // 2 - 1] + all_sentence_lengths[n // 2]) / 2
+        p25_idx = int(n * 0.25)
+        p75_idx = int(n * 0.75)
+        p90_idx = int(n * 0.90)
+        p25_length = all_sentence_lengths[min(p25_idx, n - 1)]
+        p75_length = all_sentence_lengths[min(p75_idx, n - 1)]
+        p90_length = all_sentence_lengths[min(p90_idx, n - 1)]
+        
+        # Calculate standard deviation
+        variance = sum((x - mean_length) ** 2 for x in all_sentence_lengths) / n
+        std_dev = variance ** 0.5
+        
+        aggregate_sentence_length_stats = {
+            "min_length": min_length,
+            "max_length": max_length,
+            "mean_length": mean_length,
+            "median_length": median_length,
+            "p25_length": p25_length,
+            "p75_length": p75_length,
+            "p90_length": p90_length,
+            "std_dev": std_dev
+        }
+    
     # Calculate aggregate stats
     stats = {
         "tool": "nupunkt",
@@ -126,6 +201,7 @@ def main():
         "failed_files": failed_files,
         "total_chars_processed": total_chars,
         "total_sentences": total_sentences,
+        "aggregate_sentence_length_stats": aggregate_sentence_length_stats,
         "total_time_ms": total_time * 1000,
         "aggregate_throughput_chars_per_sec": total_chars / total_time if total_time > 0 else 0,
         "aggregate_throughput_mb_per_sec": (total_chars / total_time) / (1024 * 1024) if total_time > 0 else 0,

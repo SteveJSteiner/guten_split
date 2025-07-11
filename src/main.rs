@@ -35,6 +35,8 @@ struct RunStats {
     total_chars_processed: u64,
     /// Total sentences detected across all files
     total_sentences_detected: u64,
+    /// Aggregated sentence length statistics across all files
+    aggregate_sentence_length_stats: Option<crate::parallel_processing::SentenceLengthStats>,
     /// Overall throughput in characters per second
     overall_chars_per_sec: f64,
     /// Sentence detection throughput in characters per second
@@ -68,6 +70,7 @@ async fn process_with_overlapped_pipeline(
     
     let fail_fast = args.fail_fast;
     let quiet = args.quiet;
+    let calculate_length_stats = args.sentence_length_stats;
     let mut discovery_stream = Box::pin(discovery::discover_files_parallel(&args.root_dir, discovery_config));
     let mut discovered_files = Vec::new();
     let mut valid_files = Vec::new();
@@ -113,6 +116,7 @@ async fn process_with_overlapped_pipeline(
                                 &detector_clone,
                                 overwrite_all,
                                 quiet,
+                                calculate_length_stats,
                             ).await
                         });
                         
@@ -123,6 +127,7 @@ async fn process_with_overlapped_pipeline(
                             path: path.to_string_lossy().to_string(),
                             chars_processed: 0,
                             sentences_detected: 0,
+                            sentence_length_stats: None,
                             processing_time_ms: 0,
                             sentence_detection_time_ms: 0,
                             chars_per_sec: 0.0,
@@ -137,6 +142,7 @@ async fn process_with_overlapped_pipeline(
                         path: file_validation.path.to_string_lossy().to_string(),
                         chars_processed: 0,
                         sentences_detected: 0,
+                        sentence_length_stats: None,
                         processing_time_ms: 0,
                         sentence_detection_time_ms: 0,
                         chars_per_sec: 0.0,
@@ -220,6 +226,7 @@ async fn process_with_overlapped_pipeline(
                     path: "unknown".to_string(),
                     chars_processed: 0,
                     sentences_detected: 0,
+                    sentence_length_stats: None,
                     processing_time_ms: 0,
                     sentence_detection_time_ms: 0,
                     chars_per_sec: 0.0,
@@ -290,6 +297,18 @@ async fn process_with_overlapped_pipeline(
         }
         println!("  Total bytes processed: {total_bytes}");
         println!("  Total sentences detected: {total_sentences}");
+        
+        // Display sentence length statistics if available and requested
+        if args.sentence_length_stats {
+            if let Some(ref length_stats) = crate::parallel_processing::calculate_aggregate_sentence_length_stats(&file_stats) {
+                println!("  Sentence length statistics:");
+                println!("    Min: {} chars, Max: {} chars", length_stats.min_length, length_stats.max_length);
+                println!("    Mean: {:.1} chars, Median: {:.1} chars", length_stats.mean_length, length_stats.median_length);
+                println!("    P25: {:.1}, P75: {:.1}, P90: {:.1} chars", length_stats.p25_length, length_stats.p75_length, length_stats.p90_length);
+                println!("    Std Dev: {:.1} chars", length_stats.std_dev);
+            }
+        }
+        
         println!("  Total time spent: {:.2}s", processing_duration.as_secs_f64());
         
         // WHY: Show performance metrics - Total characters / Total time spent
@@ -327,6 +346,7 @@ async fn process_single_file_restart(
     detector: &crate::sentence_detector::dialog_detector::SentenceDetectorDialog,
     _overwrite_all: bool,
     quiet: bool,
+    calculate_length_stats: bool,
 ) -> Result<(u64, u64, u64, bool, FileStats)> {
     let start_time = std::time::Instant::now();
     
@@ -364,6 +384,13 @@ async fn process_single_file_restart(
     let aux_path = crate::incremental::generate_aux_file_path(path);
     crate::parallel_processing::write_auxiliary_file_borrowed(&aux_path, &sentences, detector).await?;
     
+    // Calculate sentence length statistics only if requested
+    let sentence_length_stats = if calculate_length_stats {
+        crate::parallel_processing::calculate_sentence_length_stats(&sentences)
+    } else {
+        None
+    };
+    
     let processing_time = start_time.elapsed();
     let processing_time_ms = processing_time.as_millis() as u64;
     let chars_per_sec = if processing_time.as_secs_f64() > 0.0 {
@@ -376,6 +403,7 @@ async fn process_single_file_restart(
         path: path.to_string_lossy().to_string(),
         chars_processed: char_count,
         sentences_detected: sentence_count,
+        sentence_length_stats,
         processing_time_ms,
         sentence_detection_time_ms: sentence_detection_time.as_millis() as u64,
         chars_per_sec,
@@ -446,6 +474,7 @@ async fn process_single_file_mode(
         &detector,
         args.overwrite_all,
         args.quiet,
+        args.sentence_length_stats,
     ).await;
     
     match result {
@@ -457,6 +486,18 @@ async fn process_single_file_mode(
                 println!("  Successfully processed: 1 file");
                 println!("  Total bytes processed: {byte_count}");
                 println!("  Total sentences detected: {sentence_count}");
+                
+                // Display sentence length statistics if available and requested
+                if args.sentence_length_stats {
+                    if let Some(ref length_stats) = file_stats.sentence_length_stats {
+                        println!("  Sentence length statistics:");
+                        println!("    Min: {} chars, Max: {} chars", length_stats.min_length, length_stats.max_length);
+                        println!("    Mean: {:.1} chars, Median: {:.1} chars", length_stats.mean_length, length_stats.median_length);
+                        println!("    P25: {:.1}, P75: {:.1}, P90: {:.1} chars", length_stats.p25_length, length_stats.p75_length, length_stats.p90_length);
+                        println!("    Std Dev: {:.1} chars", length_stats.std_dev);
+                    }
+                }
+                
                 println!("  Total time spent: {:.2}s", processing_duration.as_secs_f64());
                 
                 if byte_count > 0 && processing_duration.as_secs_f64() > 0.0 {
@@ -487,21 +528,25 @@ async fn process_single_file_mode(
                 0.0
             };
             
+            let file_stats_vec = vec![file_stats];
+            let aggregate_sentence_length_stats = crate::parallel_processing::calculate_aggregate_sentence_length_stats(&file_stats_vec);
+            
             let run_stats = RunStats {
                 run_start: SystemTime::now()
                     .duration_since(SystemTime::UNIX_EPOCH)
                     .unwrap()
                     .as_secs().to_string(),
                 total_processing_time_ms: processing_duration.as_millis() as u64,
-                total_sentence_detection_time_ms: file_stats.sentence_detection_time_ms,
+                total_sentence_detection_time_ms: file_stats_vec[0].sentence_detection_time_ms,
                 total_chars_processed: byte_count,
                 total_sentences_detected: sentence_count,
+                aggregate_sentence_length_stats,
                 overall_chars_per_sec,
                 sentence_detection_chars_per_sec,
                 files_processed: 1,
                 files_skipped: 0,
                 files_failed: 0,
-                file_stats: vec![file_stats],
+                file_stats: file_stats_vec,
             };
             
             // Write stats to JSON file
@@ -617,6 +662,10 @@ struct Args {
     /// Maximum number of CPUs/threads to use for processing
     #[arg(long, help = "Limit processing to specified number of CPUs/threads (default: use all available)")]
     max_cpus: Option<usize>,
+    
+    /// Calculate sentence length statistics (adds processing overhead)
+    #[arg(long, help = "Calculate and display sentence length statistics (min, max, mean, median, percentiles)")]
+    sentence_length_stats: bool,
 }
 
 #[tokio::main]
@@ -700,6 +749,13 @@ async fn main() -> Result<()> {
         0.0
     };
     
+    // Calculate aggregate sentence length statistics only if requested
+    let aggregate_sentence_length_stats = if args.sentence_length_stats {
+        crate::parallel_processing::calculate_aggregate_sentence_length_stats(&file_stats)
+    } else {
+        None
+    };
+    
     let run_stats = RunStats {
         run_start: SystemTime::now()
             .duration_since(SystemTime::UNIX_EPOCH)
@@ -709,6 +765,7 @@ async fn main() -> Result<()> {
         total_sentence_detection_time_ms,
         total_chars_processed: total_bytes,
         total_sentences_detected: total_sentences,
+        aggregate_sentence_length_stats,
         overall_chars_per_sec,
         sentence_detection_chars_per_sec,
         files_processed: processed_files,

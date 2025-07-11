@@ -26,7 +26,7 @@ def get_system_info() -> Dict[str, Any]:
         "architecture": platform.machine()
     }
 
-def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None, max_cpus: int = None) -> Dict[str, Any]:
+def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None, max_cpus: int = None, sentence_length_stats: bool = False) -> Dict[str, Any]:
     """Run seams benchmark and extract results."""
     benchmark_start = time.time()
     
@@ -60,6 +60,8 @@ def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None, m
     cmd = ["./target/release/seams", root_dir, "--stats-out", stats_file, "--overwrite-all"]
     if max_cpus:
         cmd.extend(["--max-cpus", str(max_cpus)])
+    if sentence_length_stats:
+        cmd.append("--sentence-length-stats")
     # Note: seams doesn't support --max-files yet, so it processes all files
     
     result = subprocess.run(
@@ -108,6 +110,9 @@ def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None, m
                 "total": sum(sentence_counts)
             }
         
+        # Extract sentence length statistics from aggregate stats
+        sentence_length_stats = stats.get("aggregate_sentence_length_stats", {})
+        
         benchmark_time = time.time() - benchmark_start
         
         # Print preliminary results
@@ -119,7 +124,12 @@ def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None, m
         print(f"   Total e2e time: {benchmark_time:.2f}s")
         print(f"   Files: {files_processed}/{files_processed + files_failed}")
         print(f"   Chars: {chars_processed:,}")
-        print(f"   Sentences: {total_sentences:,} (min: {sentence_stats.get('min', 0)}, Q25: {sentence_stats.get('q25', 0)}, avg: {sentence_stats.get('average', 0):.1f}, median: {sentence_stats.get('median', 0):.1f}, Q75: {sentence_stats.get('q75', 0)}, max: {sentence_stats.get('max', 0)})")
+        print(f"   Sentences: {total_sentences:,} (count per file - min: {sentence_stats.get('min', 0)}, Q25: {sentence_stats.get('q25', 0)}, avg: {sentence_stats.get('average', 0):.1f}, median: {sentence_stats.get('median', 0):.1f}, Q75: {sentence_stats.get('q75', 0)}, max: {sentence_stats.get('max', 0)})")
+        
+        # Display sentence length statistics if available
+        if sentence_length_stats:
+            print(f"   Sentence lengths: min: {sentence_length_stats.get('min_length', 0)} chars, max: {sentence_length_stats.get('max_length', 0)} chars")
+            print(f"   Length stats: mean: {sentence_length_stats.get('mean_length', 0):.1f}, median: {sentence_length_stats.get('median_length', 0):.1f}, P25: {sentence_length_stats.get('p25_length', 0):.1f}, P75: {sentence_length_stats.get('p75_length', 0):.1f}, P90: {sentence_length_stats.get('p90_length', 0):.1f}, std: {sentence_length_stats.get('std_dev', 0):.1f}")
         
         # Show sentence detection throughput if available
         sentence_detection_throughput = stats.get("sentence_detection_chars_per_sec", 0)
@@ -221,7 +231,14 @@ def run_python_benchmark_with_venv(script_path: str, root_dir: str, stats_file: 
         print(f"   Total e2e time: {benchmark_time:.2f}s")
         print(f"   Files: {files_processed}/{files_processed + failed_files}")
         print(f"   Chars: {chars_processed:,}")
-        print(f"   Sentences: {total_sentences:,} (min: {sentence_stats.get('min', 0)}, Q25: {sentence_stats.get('q25', 0)}, avg: {sentence_stats.get('average', 0):.1f}, median: {sentence_stats.get('median', 0):.1f}, Q75: {sentence_stats.get('q75', 0)}, max: {sentence_stats.get('max', 0)})")
+        print(f"   Sentences: {total_sentences:,} (count per file - min: {sentence_stats.get('min', 0)}, Q25: {sentence_stats.get('q25', 0)}, avg: {sentence_stats.get('average', 0):.1f}, median: {sentence_stats.get('median', 0):.1f}, Q75: {sentence_stats.get('q75', 0)}, max: {sentence_stats.get('max', 0)})")
+        
+        # Display sentence length statistics if available
+        sentence_length_stats = stats.get("aggregate_sentence_length_stats", {})
+        if sentence_length_stats:
+            print(f"   Sentence lengths: min: {sentence_length_stats.get('min_length', 0):.0f} chars, max: {sentence_length_stats.get('max_length', 0):.0f} chars")
+            print(f"   Length stats: mean: {sentence_length_stats.get('mean_length', 0):.1f}, median: {sentence_length_stats.get('median_length', 0):.1f}, P25: {sentence_length_stats.get('p25_length', 0):.1f}, P75: {sentence_length_stats.get('p75_length', 0):.1f}, P90: {sentence_length_stats.get('p90_length', 0):.1f}, std: {sentence_length_stats.get('std_dev', 0):.1f}")
+        
         print(f"   Sentence detection throughput: {throughput:,.0f} chars/sec ({throughput/(1024*1024):.2f} MB/sec)")
         print(f"   Total e2e throughput: {total_e2e_throughput:,.0f} chars/sec ({total_e2e_throughput/(1024*1024):.2f} MB/sec)")
         if failed_files > 0:
@@ -456,6 +473,10 @@ def main():
     parser.add_argument("root_dir", help="Root directory containing *-0.txt files")
     parser.add_argument("--output", default="benchmark_comparison.json", help="Output comparison file")
     parser.add_argument("--max_files", type=int, help="Maximum files to process (for testing)")
+    parser.add_argument("--seams-only", action="store_true", help="Run only seams benchmark (skip Python alternatives)")
+    parser.add_argument("--nupunkt-only", action="store_true", help="Run only nupunkt benchmark (skip seams and other tools)")
+    parser.add_argument("--max-cpus", type=int, help="Maximum CPUs to use for seams benchmark")
+    parser.add_argument("--sentence-length-stats", action="store_true", help="Calculate sentence length statistics (adds overhead but provides detailed analysis)")
     
     args = parser.parse_args()
     
@@ -483,38 +504,58 @@ def main():
     print(f"🧠 Memory: {system_info.get('memory_gb', 'Unknown')} GB")
     print()
     
-    # Run seams benchmarks (both single-CPU and default)
-    print("🔨 Running seams single-CPU benchmark...")
-    seams_single_result = run_seams_benchmark(args.root_dir, "seams_single_cpu_stats.json", args.max_files, max_cpus=1)
-    seams_single_result["tool"] = "seams-single-cpu"  # Distinguish in results
-    results.append(seams_single_result)
-    
-    print("🔨 Running seams default (multi-CPU) benchmark...")
-    seams_multi_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json", args.max_files)
-    seams_multi_result["tool"] = "seams"  # Keep original name
-    results.append(seams_multi_result)
-    
-    # Run Python benchmarks (using venv python)
-    python_benchmarks = [
-        #("python_pysbd_benchmark.py", "python_pysbd_stats.json"),
-        #("python_spacy_benchmark.py", "python_spacy_stats.json"),
-        ("python_nupunkt_benchmark.py", "python_nupunkt_stats.json")
-    ]
-    
-    # Check for virtual environment
-    venv_python = benchmarks_dir / ".venv" / "bin" / "python"
-    python_cmd = str(venv_python) if venv_python.exists() else "python3"
-    
-    for script_name, stats_file in python_benchmarks:
-        script_path = benchmarks_dir / script_name
+    # Run benchmarks based on flags
+    if getattr(args, 'nupunkt_only', False):
+        print("🐍 Running nupunkt benchmark (nupunkt-only mode)...")
+        # Check for virtual environment
+        venv_python = benchmarks_dir / ".venv" / "bin" / "python"
+        python_cmd = str(venv_python) if venv_python.exists() else "python3"
+        
+        script_path = benchmarks_dir / "python_nupunkt_benchmark.py"
         if script_path.exists():
-            result = run_python_benchmark_with_venv(str(script_path), args.root_dir, stats_file, python_cmd, args.max_files)
+            result = run_python_benchmark_with_venv(str(script_path), args.root_dir, "python_nupunkt_stats.json", python_cmd, args.max_files)
             results.append(result)
-            
-            # Show current leaderboard
-            show_current_leaderboard(results)
         else:
-            print(f"WARNING: {script_name} not found, skipping")
+            print(f"ERROR: python_nupunkt_benchmark.py not found")
+    elif getattr(args, 'seams_only', False):
+        print("🔨 Running seams benchmark (seams-only mode)...")
+        max_cpus = getattr(args, 'max_cpus', None)
+        seams_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json", args.max_files, max_cpus=max_cpus, sentence_length_stats=args.sentence_length_stats)
+        seams_result["tool"] = "seams"
+        results.append(seams_result)
+    else:
+        # Run both single-CPU and default for comparison
+        print("🔨 Running seams single-CPU benchmark...")
+        seams_single_result = run_seams_benchmark(args.root_dir, "seams_single_cpu_stats.json", args.max_files, max_cpus=1, sentence_length_stats=args.sentence_length_stats)
+        seams_single_result["tool"] = "seams-single-cpu"  # Distinguish in results
+        results.append(seams_single_result)
+        
+        print("🔨 Running seams default (multi-CPU) benchmark...")
+        seams_multi_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json", args.max_files, sentence_length_stats=args.sentence_length_stats)
+        seams_multi_result["tool"] = "seams"  # Keep original name
+        results.append(seams_multi_result)
+        
+        # Run Python benchmarks (using venv python)
+        python_benchmarks = [
+            #("python_pysbd_benchmark.py", "python_pysbd_stats.json"),
+            #("python_spacy_benchmark.py", "python_spacy_stats.json"),
+            ("python_nupunkt_benchmark.py", "python_nupunkt_stats.json")
+        ]
+        
+        # Check for virtual environment
+        venv_python = benchmarks_dir / ".venv" / "bin" / "python"
+        python_cmd = str(venv_python) if venv_python.exists() else "python3"
+        
+        for script_name, stats_file in python_benchmarks:
+            script_path = benchmarks_dir / script_name
+            if script_path.exists():
+                result = run_python_benchmark_with_venv(str(script_path), args.root_dir, stats_file, python_cmd, args.max_files)
+                results.append(result)
+                
+                # Show current leaderboard
+                show_current_leaderboard(results)
+            else:
+                print(f"WARNING: {script_name} not found, skipping")
     
     # Generate comparison report
     comparison = generate_comparison_report(results, system_info)

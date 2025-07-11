@@ -4,11 +4,25 @@
 
 Splits large text corpora into meaningful sentences while preserving narrative flow and dialog structure.
 
+
+
 ## Narrative Sentence Splitting 
 
 See [examples](docs/examples.md) demonstrating:
 - **Dialog spanning paragraph separators** - Dialog attribution stays connected across paragraph breaks
 - **Paragraph separators indicating end of never-closed quote** - Letter format with implicit quote boundaries
+
+## Benchmarks
+
+- 💻 System: Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.39
+- 🧠 Memory: 31.26 GB
+- 📁 Files: 20440 from a local Project Gutenberg mirror
+
+| Benchmark (version) | Cores | End-to-end time | Speed-up vs nupunkt | Sentences / s | Sentence detection throughput | Total e2e throughput | Note |
+|---------------------|:----:|---------------:|--------------------:|--------------:|-----------------------------:|--------------------:|------|
+| **seams (0.1.0)** | 32 | **6 s** | **59 ×** | **8.3 M** | 134.5 MB/s | **1235.2 MB/s** | line offsets included |
+| seams [single-cpu] | 1 | 1 m 27 s | 4 × | 585 k | **543.4 MB/s** | 93.9 MB/s | single-CPU baseline |
+| nupunkt (0.5.1) | 1 | 6 m 5 s | 1 × | 188 k | 20.3 MB/s | 20.2 MB/s | pure-Python |
 
 ## Quick Start
 
@@ -20,8 +34,8 @@ cargo install seams
 
 **From source:**
 ```bash
-git clone https://github.com/your-username/seams.git
-cd seams
+git clone https://github.com/knowseams/knowseams.git
+cd knowseams
 cargo install --path .
 ```
 

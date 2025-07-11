@@ -7,10 +7,20 @@ use std::collections::HashSet;
 /// These are the first part of 2-segment identifiers like "Dr. Smith", "Mr. Johnson"
 /// Single capital letters are commonly used as abbreviations for proper names
 pub const TITLE_ABBREVIATIONS: &[&str] = &[
-    "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.",
+    "Dr.", "Mr.", "Mrs.", "Ms.", "Prof.", "Sr.", "Jr.", "St.",
     // Single capital letters - commonly used as abbreviations for proper names
     "A.", "B.", "C.", "D.", "E.", "F.", "G.", "H.", "I.", "J.", "K.", "L.", "M.",
-    "N.", "O.", "P.", "Q.", "R.", "S.", "T.", "U.", "V.", "W.", "X.", "Y.", "Z."
+    "N.", "O.", "P.", "Q.", "R.", "S.", "T.", "U.", "V.", "W.", "X.", "Y.", "Z.",
+    // Clergy & religious
+    "Rev.", "Fr.", "Rab.", "Msgr.",
+    // Political / civic
+    "Gov.", "Sen.", "Rep.", "Amb.", "Hon.", "Ald.",
+    // Military ranks
+    "Adm.", "Capt.", "Cmdr.", "Col.", "Gen.", "Lt.", "Maj.", "Sgt.", "Cpl.", "Pvt.", "Ens.",
+    // Academic / professional (beyond Prof.)
+    "Pres.", "Supt.",
+    // Courtesy plurals & French forms sometimes used in English
+    "Messrs.", "Mme.", "Mlle.", "M."
 ];
 
 /// All abbreviations that should not cause sentence splits  
