@@ -1,0 +1,11 @@
+# Test outputs and temporary files
+test_outputs/
+__pycache__/
+*.pyc
+
+# Large dataset files (should be generated, not committed)
+*.json
+
+# Temporary test files
+test_*
+temp_*

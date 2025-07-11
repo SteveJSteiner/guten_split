@@ -3,7 +3,21 @@
 Enhanced gold-set builder focused on sentence boundary disagreements.
 
 Finds cases where the same original text region is segmented differently
-by seams vs fast extraction methods.
+by seams vs fast extraction methods, and includes segmentations from 
+nupunkt and pysbd for comprehensive algorithm comparison.
+
+Features:
+- Extracts original text using coordinate mappings from seams files
+- Compares segmentations across multiple methods (seams, fast/sentences, nupunkt, pysbd)
+- Applies filtering rules to focus on meaningful disagreements
+- Generates rich datasets for sentence segmentation evaluation
+
+Usage:
+    python build_boundary_gold_set.py --max-files 25 --target-size 500 --output golden_dataset.json
+
+Requires:
+    - nupunkt: pip install nupunkt
+    - pysbd: pip install pysbd
 """
 
 import os
@@ -17,6 +31,21 @@ from dataclasses import dataclass
 from collections import defaultdict
 from difflib import SequenceMatcher
 
+# Sentence segmentation imports for filtering
+try:
+    import nupunkt
+    NUPUNKT_AVAILABLE = True
+except ImportError:
+    NUPUNKT_AVAILABLE = False
+    print("Warning: nupunkt not available, filtering will be limited")
+
+try:
+    import pysbd
+    PYSBD_AVAILABLE = True
+except ImportError:
+    PYSBD_AVAILABLE = False
+    print("Warning: pysbd not available, filtering will be limited")
+
 
 @dataclass
 class BoundaryExample:
@@ -25,6 +54,8 @@ class BoundaryExample:
     seams_sentences: List[str]
     comparison_sentences: List[str]
     comparison_method: str  # 'fast' or 'sentences'
+    nupunkt_sentences: List[str]  # Added: nupunkt segmentation
+    pysbd_sentences: List[str]  # Added: pysbd segmentation
     source_file: str
     start_line: int
     end_line: int
@@ -202,18 +233,26 @@ class BoundaryGoldSetBuilder:
                 disagreement_type = self.classify_disagreement(seams_texts, overlapping_comparison)
                 complexity = self.classify_complexity(original_region)
                 
+                # Get nupunkt and pysbd segmentations
+                nupunkt_sentences, pysbd_sentences = self.get_nupunkt_pysbd_segmentations(original_region.strip())
+                
                 example = BoundaryExample(
                     original_text=original_region.strip(),
                     seams_sentences=seams_texts,
                     comparison_sentences=overlapping_comparison,
                     comparison_method=comparison_method,
+                    nupunkt_sentences=nupunkt_sentences,
+                    pysbd_sentences=pysbd_sentences,
                     source_file="",  # Will be set by caller
                     start_line=region_start_line,
                     end_line=region_end_line,
                     complexity=complexity,
                     disagreement_type=disagreement_type
                 )
-                examples.append(example)
+                
+                # Apply filtering rules
+                if not self.should_filter_example(example):
+                    examples.append(example)
         
         return examples
     
@@ -269,6 +308,61 @@ class BoundaryGoldSetBuilder:
             return 'complex'
         
         return 'normal'
+    
+    def get_nupunkt_pysbd_segmentations(self, original_text: str) -> Tuple[List[str], List[str]]:
+        """Get nupunkt and pysbd segmentations for the original text."""
+        nupunkt_sentences = []
+        pysbd_sentences = []
+        
+        # Get nupunkt segmentation
+        if NUPUNKT_AVAILABLE:
+            try:
+                nupunkt_sentences = [sent.strip() for sent in nupunkt.sent_tokenize(original_text) if sent.strip()]
+            except Exception:
+                nupunkt_sentences = []
+        
+        # Get pysbd segmentation
+        if PYSBD_AVAILABLE:
+            try:
+                segmenter = pysbd.Segmenter(language="en", clean=False)
+                pysbd_sentences = [sent.strip() for sent in segmenter.segment(original_text) if sent.strip()]
+            except Exception:
+                pysbd_sentences = []
+        
+        return nupunkt_sentences, pysbd_sentences
+    
+    def should_filter_example(self, example: BoundaryExample) -> bool:
+        """Apply filtering rules to reject unwanted examples.
+        
+        Returns True if example should be filtered out (rejected).
+        """
+        original_text = example.original_text
+        
+        # Rule 1: Reject if no lowercase letters
+        if not re.search(r'[a-z]', original_text):
+            return True
+        
+        # Rule 2: Reject if all three methods (seams, nupunkt, pysbd) agree
+        if NUPUNKT_AVAILABLE and PYSBD_AVAILABLE:
+            # Get seams segmentation (already known)
+            seams_sentences = [sent.strip() for sent in example.seams_sentences if sent.strip()]
+            nupunkt_sentences = example.nupunkt_sentences
+            pysbd_sentences = example.pysbd_sentences
+            
+            # If all three methods produce the same number of sentences and similar content, reject
+            if (len(seams_sentences) == len(nupunkt_sentences) == len(pysbd_sentences) and 
+                len(seams_sentences) > 0):
+                
+                # Quick check: if sentence counts match, compare normalized content
+                seams_normalized = " ".join(seams_sentences).lower().replace(" ", "")
+                nupunkt_normalized = " ".join(nupunkt_sentences).lower().replace(" ", "")
+                pysbd_normalized = " ".join(pysbd_sentences).lower().replace(" ", "")
+                
+                # If content is very similar (allowing for minor differences), reject
+                if (seams_normalized == nupunkt_normalized == pysbd_normalized):
+                    return True
+        
+        return False
     
     def analyze_boundary_disagreements(self, seams_file: Path, comparison_file: Path, comparison_method: str) -> List[BoundaryExample]:
         """Find boundary disagreements between seams and comparison extraction."""
@@ -364,6 +458,8 @@ class BoundaryGoldSetBuilder:
                 'seams_sentences': example.seams_sentences,
                 'comparison_sentences': example.comparison_sentences,
                 'comparison_method': example.comparison_method,
+                'nupunkt_sentences': example.nupunkt_sentences,
+                'pysbd_sentences': example.pysbd_sentences,
                 'source_file': example.source_file,
                 'start_line': example.start_line,
                 'end_line': example.end_line,
@@ -371,7 +467,9 @@ class BoundaryGoldSetBuilder:
                 'disagreement_type': example.disagreement_type,
                 'original_length': len(example.original_text),
                 'seams_count': len(example.seams_sentences),
-                'comparison_count': len(example.comparison_sentences)
+                'comparison_count': len(example.comparison_sentences),
+                'nupunkt_count': len(example.nupunkt_sentences),
+                'pysbd_count': len(example.pysbd_sentences)
             })
         
         export_data['metadata']['disagreement_distribution'] = dict(disagreement_counts)

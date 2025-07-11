@@ -67,47 +67,50 @@ This shows fast method incorrectly split on "R. I." (Rhode Island abbreviation).
 
 ## Next Steps
 
-### 1. Soft Separator Fix
-**Priority: High** - Fix the dialog attribution bug where `"no!" interposed` incorrectly splits.
+### 1. ✅ Soft Separator Fix (COMPLETED)
+~~**Priority: High** - Fix the dialog attribution bug where `"no!" interposed` incorrectly splits.~~
 
-The issue is in the soft separator pattern:
-```rust
-let soft_separator = r"[ \t]+";  // Current - spaces and tabs only
-```
+**Status**: ✅ **COMPLETED** in task `dialog-hard-separator-and-apostrophe-fixes_82.stevejs.md`
+- Dialog attribution bug resolved through pattern priority fixes
+- Multi-pattern regex architecture implemented with `Regex::new_many()`
+- Universal whitespace requirement prevents apostrophe context confusion
+- All dialog detection tests passing
 
-Should be:
-```rust
-let soft_separator = r"[ \t]+|(?:\r?\n)";  // Include single newlines
-```
+### 2. ✅ Multi-Pattern Regex Refactor (COMPLETED) 
+~~**Priority: High** - Implement the `Regex::new_many()` approach documented in task `regex-multi-pattern-dialog-detection_81.stevejs.md`.~~
 
-This would correctly handle:
-- `"no!"\ninterposed` (single newline - continue sentence)
-- vs `"sentence."\n\n"Next paragraph."` (double newline - new paragraph)
+**Status**: ✅ **COMPLETED** as part of task 82
+- Direct `PatternID` to semantic action mapping implemented
+- Post-processing disambiguation eliminated
+- Attribution patterns working correctly
 
-### 2. Multi-Pattern Regex Refactor
-**Priority: High** - Implement the `Regex::new_many()` approach documented in task `regex-multi-pattern-dialog-detection_81.stevejs.md`.
+### 3. ✅ Attribution Pattern Recognition (NOT NEEDED)
+~~**Priority: Medium** - Add explicit patterns for dialog attribution verbs~~
 
-This eliminates post-processing disambiguation and directly maps `PatternID` to semantic actions.
+**Status**: ✅ **NOT NEEDED** - Current implementation handles attribution correctly through existing pattern architecture. The universal approach is more robust than hard-coded verb lists.
 
-### 3. Attribution Pattern Recognition
-**Priority: Medium** - Add explicit patterns for dialog attribution verbs:
-```rust
-r#"[.!?]["']\s+(?:said|asked|replied|interposed|exclaimed|whispered|shouted|continued|added|muttered)\b"#
-```
+### 4. ✅ Golden Dataset Generation (COMPLETED)
+**Priority: HIGH** - Generate the actual golden dataset using existing tools:
+- ✅ Enhanced `build_boundary_gold_set.py` with filtering rules and multi-method segmentation
+- ✅ Added filtering rules: reject examples with no lowercase letters, reject when all methods agree
+- ✅ Added nupunkt and pysbd segmentations to each example for comprehensive comparison
+- ✅ Successfully tested enhanced tool with boundary disagreement detection
+- Ready to generate production datasets at scale
 
-This would prevent splitting dialog from its attribution.
+### 5. Dataset Validation and Quality Control
+**Priority: MEDIUM** - Future validation tasks:
+- Verify coordinate mappings extract correct original text at scale
+- Check byte-level fidelity preservation as documented  
+- Test against known edge cases (abbreviations, dialog attribution, etc.)
+- Ensure balanced distribution across text complexity types
+- Generate production datasets with 500-1000+ examples
 
-### 4. Golden Dataset Expansion
-**Priority: Medium** - Scale up the boundary disagreement analysis:
-- Process more Gutenberg files (currently limited to ~20-50 files)
-- Focus on dialog-heavy texts vs narrative texts
-- Add comparison against regular `_sentences.txt` (not just `_sentences_fast.txt`)
-
-### 5. Evaluation Framework
-**Priority: Low** - Enhance the evaluation script:
-- Add more segmentation algorithms
-- Implement precision/recall metrics for boundary detection
-- Compare performance on different text types
+### 6. Evaluation Framework Enhancement
+**Priority: MEDIUM** - Improve evaluation against sentence segmentation algorithms:
+- Test against punkt, pysbd, spaCy using existing `evaluate_gold_set.py`
+- Compare performance across different text genres
+- Generate precision/recall metrics by complexity category
+- Document algorithm strengths/weaknesses on different text types
 
 ## Usage Examples
 
