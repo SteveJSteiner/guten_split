@@ -1,0 +1,495 @@
+{
+  "metadata": {
+    "total_examples": 20,
+    "disagreement_distribution": {
+      "under_split": 9,
+      "over_split": 11
+    },
+    "complexity_distribution": {
+      "dialog": 5,
+      "complex": 5,
+      "abbreviation": 5,
+      "normal": 5
+    },
+    "comparison_method_distribution": {
+      "fast": 12,
+      "sentences": 8
+    },
+    "description": "Gold-set focused on sentence boundary disagreements between seams and other methods"
+  },
+  "examples": [
+    {
+      "original_text": "A man is he who has not entered the sheepfold by the door, but has climbed in another way.\"  His words were received with a murmur of assent.  \"And the first time that this intruder has opened his mouth, it has been to provoke unto strife, and to fill all hearts with dismay. He erects barriers where was open common. He prohibits unions which the Word of God does not disallow. He creates spiritual relationships as occasions and excuses for dissolving marriages, where no blood ties exist. He proclaims his mission to be one of breaking up of families and making houses desolate. Now we are sheep without a shepherd, a flock in the midst of wolves. We are neither numerous enough nor strong enough to resist the over-might that is brought against us. By the blessing of David, we have been ever men of peace. Our hands are unaccustomed to handle the bow and wield the sword. We have no prince over us to lead us. We have no bishop over us to advise us. The throne of our father David is usurped by an intruder whom we will not acknowledge.\"  He paused.",
+      "seams_sentences": [
+        "A man is he who has not entered the sheepfold by the door, but has climbed in another way.\"",
+        "His words were received with a murmur of assent. \"And the first time that this intruder has opened his mouth, it has been to provoke unto strife, and to fill all hearts with dismay. He erects barriers where was open common. He prohibits unions which the Word of God does not disallow. He creates spiritual relationships as occasions and excuses for dissolving marriages, where no blood ties exist. He proclaims his mission to be one of breaking up of families and making houses desolate. Now we are sheep without a shepherd, a flock in the midst of wolves. We are neither numerous enough nor strong enough to resist the over-might that is brought against us. By the blessing of David, we have been ever men of peace. Our hands are unaccustomed to handle the bow and wield the sword. We have no prince over us to lead us. We have no bishop over us to advise us. The throne of our father David is usurped by an intruder whom we will not acknowledge.\"",
+        "He paused."
+      ],
+      "comparison_sentences": [
+        "\"And the first time that this intruder has opened his mouth, it has been to provoke unto strife, and to fill all hearts with dismay. He erects barriers where was open common. He prohibits unions which the Word of God does not disallow. He creates spiritual relationships as occasions and excuses for dissolving marriages, where no blood ties exist. He proclaims his mission to be one of breaking up of families and making houses desolate. Now we are sheep without a shepherd, a flock in the midst of wolves. We are neither numerous enough nor strong enough to resist the over-might that is brought against us. By the blessing of David, we have been ever men of peace. Our hands are unaccustomed to handle the bow and wield the sword. We have no prince over us to lead us. We have no bishop over us to advise us. The throne of our father David is usurped by an intruder whom we will not acknowledge.\" He paused."
+      ],
+      "comparison_method": "fast",
+      "source_file": "4/2/0/1/42011/42011-0.txt",
+      "start_line": 1606,
+      "end_line": 1626,
+      "complexity": "dialog",
+      "disagreement_type": "under_split",
+      "original_length": 1054,
+      "seams_count": 3,
+      "comparison_count": 1
+    },
+    {
+      "original_text": "Clarence wrote--  \"Dear Edwina,--  \"This is such a pretty place, and I am most comfortable in my situation. I trust you are the same, I have found a sweetheart, after all, amongst the Boers, such a nice, useful, frank fellow.  He took me to the Dopper Kirk on Sunday to hear the president preach.  What a noble old gentleman he is, to be sure!",
+      "seams_sentences": [
+        "Clarence wrote-- \"Dear Edwina,-- \"This is such a pretty place, and I am most comfortable in my situation. I trust you are the same, I have found a sweetheart, after all, amongst the Boers, such a nice, useful, frank fellow.",
+        "He took me to the Dopper Kirk on Sunday to hear the president preach.",
+        "What a noble old gentleman he is, to be sure!"
+      ],
+      "comparison_sentences": [
+        "Clarence wrote--",
+        "\"Dear Edwina,--",
+        "\"This is such a pretty place, and I am most comfortable in my situation.",
+        "I trust you are the same, I have found a sweetheart, after all, amongst the Boers, such a nice, useful, frank fellow.",
+        "He took me to the Dopper Kirk on Sunday to hear the president preach.",
+        "What a noble old gentleman he is, to be sure!"
+      ],
+      "comparison_method": "sentences",
+      "source_file": "4/0/8/3/40838/40838-0.txt",
+      "start_line": 9706,
+      "end_line": 9714,
+      "complexity": "dialog",
+      "disagreement_type": "over_split",
+      "original_length": 343,
+      "seams_count": 3,
+      "comparison_count": 6
+    },
+    {
+      "original_text": "After a short pause, he said, with a sigh—  “How surprising all this is! Doubtless here is the key of the whole matter. These two unknown characters, one with a foreign accent, coming mysteriously by night to see Trémont, and their visit followed by such a frightful cataclysm; what does it all mean? Is it an accident or a crime? And, if a crime, what motive inspired it?”  Rising, he crossed to the window, with anxious mien, then returned mechanically to his desk, resumed his seat, and, again fixing his eyes on the Colonel, said—  “Well! Vallenot, what happened after this honest fellow had finished his tale? What measures were taken?”  “A squad of soldiers from the fort had been sent for, and the ruins were carefully searched, under the supervision of the police. Nothing, however, was found. The destruction was too complete. With the exception of the side of the wall still standing, not a single piece of anything was left whole. Still, after a couple of hours’ examination of the _débris_, from which arose a very strong odour of fulminate of mercury, the diggers brought to light an iron chest, with broken hinges, the bottom of which was curiously pierced with thousands of holes as though with an auger.”",
+      "seams_sentences": [
+        "After a short pause, he said, with a sigh— “How surprising all this is! Doubtless here is the key of the whole matter. These two unknown characters, one with a foreign accent, coming mysteriously by night to see Trémont, and their visit followed by such a frightful cataclysm; what does it all mean? Is it an accident or a crime? And, if a crime, what motive inspired it?”",
+        "Rising, he crossed to the window, with anxious mien, then returned mechanically to his desk, resumed his seat, and, again fixing his eyes on the Colonel, said— “Well! Vallenot, what happened after this honest fellow had finished his tale? What measures were taken?”",
+        "“A squad of soldiers from the fort had been sent for, and the ruins were carefully searched, under the supervision of the police. Nothing, however, was found. The destruction was too complete. With the exception of the side of the wall still standing, not a single piece of anything was left whole. Still, after a couple of hours’ examination of the _débris_, from which arose a very strong odour of fulminate of mercury, the diggers brought to light an iron chest, with broken hinges, the bottom of which was curiously pierced with thousands of holes as though with an auger.”"
+      ],
+      "comparison_sentences": [
+        "After a short pause, he said, with a sigh— “How surprising all this is!",
+        "Doubtless here is the key of the whole matter.",
+        "These two unknown characters, one with a foreign accent, coming mysteriously by night to see Trémont, and their visit followed by such a frightful cataclysm; what does it all mean?",
+        "Is it an accident or a crime?",
+        "And, if a crime, what motive inspired it?”",
+        "Rising, he crossed to the window, with anxious mien, then returned mechanically to his desk, resumed his seat, and, again fixing his eyes on the Colonel, said— “Well!",
+        "Vallenot, what happened after this honest fellow had finished his tale?",
+        "What measures were taken?”",
+        "“A squad of soldiers from the fort had been sent for, and the ruins were carefully searched, under the supervision of the police. Nothing, however, was found. The destruction was too complete. With the exception of the side of the wall still standing, not a single piece of anything was left whole. Still, after a couple of hours’ examination of the _débris_, from which arose a very strong odour of fulminate of mercury, the diggers brought to light an iron chest, with broken hinges, the bottom of which was curiously pierced with thousands of holes as though with an auger.”"
+      ],
+      "comparison_method": "fast",
+      "source_file": "6/9/1/4/69149/69149-0.txt",
+      "start_line": 442,
+      "end_line": 466,
+      "complexity": "dialog",
+      "disagreement_type": "over_split",
+      "original_length": 1220,
+      "seams_count": 3,
+      "comparison_count": 9
+    },
+    {
+      "original_text": "To return to the structure: There are no better examples of domestic architecture than many of the simple homes of New England. These are almost invariably white with green trim. Their interiors were designed for comfort. Their gardens are literally festivals of color from early Spring until late Autumn.",
+      "seams_sentences": [
+        "To return to the structure: There are no better examples of domestic architecture than many of the simple homes of New England.",
+        "These are almost invariably white with green trim.",
+        "Their interiors were designed for comfort. Their gardens are literally festivals of color from early Spring until late Autumn."
+      ],
+      "comparison_sentences": [
+        "To return to the structure: There are no better examples of domestic architecture than many of the simple homes of New England.",
+        "These are almost invariably white with green trim.",
+        "Their interiors were designed for comfort.",
+        "Their gardens are literally festivals of color from early Spring until late Autumn."
+      ],
+      "comparison_method": "fast",
+      "source_file": "6/8/2/6/68261/68261-0.txt",
+      "start_line": 227,
+      "end_line": 232,
+      "complexity": "complex",
+      "disagreement_type": "over_split",
+      "original_length": 305,
+      "seams_count": 3,
+      "comparison_count": 4
+    },
+    {
+      "original_text": "“Not a word to any one! Do you give me your promise?”  “Very well! I promise.”  “Well, then! as I told you before, in matters concerning scientific research, the General had confidence in no one except a young man whom he loved as though he were his own child, M. Baradier’s son. I have reason to believe that M. Marcel knows M. de Trémont’s formulæ. If, therefore, the villains we are on the look-out for have the slightest suspicion that they might in this direction try the _coup_ which failed with the General, as soon as they are reassured as to the result of the present search, they will set to work afresh. It is there my task will begin. I am entering the service of M. Marcel, and I shall not leave him a single moment. Besides, I have a friend, who is accustomed to such work. I am taking him with me. The two of us are organizing a continual surveillance. If the plot recommences, we let it develop, and intervene at the critical moment. That is my plan. That is why I made bold, a few minutes ago, to advise you to give up the game, to all appearance. With villains like those with whom we have to deal, there may be a great deal of trouble. Now, you may do all that is necessary to give me a hand, and as soon as developments have come to a head, I will immediately lay the matter in your hands.”",
+      "seams_sentences": [
+        "“Not a word to any one! Do you give me your promise?”",
+        "“Very well! I promise.”",
+        "“Well, then! as I told you before, in matters concerning scientific research, the General had confidence in no one except a young man whom he loved as though he were his own child, M. Baradier’s son. I have reason to believe that M. Marcel knows M. de Trémont’s formulæ. If, therefore, the villains we are on the look-out for have the slightest suspicion that they might in this direction try the _coup_ which failed with the General, as soon as they are reassured as to the result of the present search, they will set to work afresh. It is there my task will begin. I am entering the service of M. Marcel, and I shall not leave him a single moment. Besides, I have a friend, who is accustomed to such work. I am taking him with me. The two of us are organizing a continual surveillance. If the plot recommences, we let it develop, and intervene at the critical moment. That is my plan. That is why I made bold, a few minutes ago, to advise you to give up the game, to all appearance. With villains like those with whom we have to deal, there may be a great deal of trouble. Now, you may do all that is necessary to give me a hand, and as soon as developments have come to a head, I will immediately lay the matter in your hands.”"
+      ],
+      "comparison_sentences": [
+        "“Not a word to any one! Do you give me your promise?”",
+        "“Very well! I promise.”",
+        "“Well, then! as I told you before, in matters concerning scientific research, the General had confidence in no one except a young man whom he loved as though he were his own child, M. Baradier’s son.",
+        "I have reason to believe that M.",
+        "Marcel knows M. de Trémont’s formulæ.",
+        "If, therefore, the villains we are on the look-out for have the slightest suspicion that they might in this direction try the _coup_ which failed with the General, as soon as they are reassured as to the result of the present search, they will set to work afresh.",
+        "It is there my task will begin.",
+        "I am entering the service of M.",
+        "Marcel, and I shall not leave him a single moment.",
+        "Besides, I have a friend, who is accustomed to such work.",
+        "I am taking him with me.",
+        "The two of us are organizing a continual surveillance.",
+        "If the plot recommences, we let it develop, and intervene at the critical moment.",
+        "That is my plan.",
+        "That is why I made bold, a few minutes ago, to advise you to give up the game, to all appearance.",
+        "With villains like those with whom we have to deal, there may be a great deal of trouble.",
+        "Now, you may do all that is necessary to give me a hand, and as soon as developments have come to a head, I will immediately lay the matter in your hands.”"
+      ],
+      "comparison_method": "fast",
+      "source_file": "6/9/1/4/69149/69149-0.txt",
+      "start_line": 4057,
+      "end_line": 4078,
+      "complexity": "abbreviation",
+      "disagreement_type": "over_split",
+      "original_length": 1310,
+      "seams_count": 3,
+      "comparison_count": 17
+    },
+    {
+      "original_text": "“Let us forget everything. Do not think any more, my love—leave your poor tortured heart in peace.”  Suddenly a sound of footsteps was heard throughout the house, and cries coming from outside.",
+      "seams_sentences": [
+        "“Let us forget everything.",
+        "Do not think any more, my love—leave your poor tortured heart in peace.”",
+        "Suddenly a sound of footsteps was heard throughout the house, and cries coming from outside."
+      ],
+      "comparison_sentences": [
+        "“Death is all around us,” she whispered. “Let us forget everything. Do not think any more, my love—leave your poor tortured heart in peace.” Suddenly a sound of footsteps was heard throughout the house, and cries coming from outside."
+      ],
+      "comparison_method": "fast",
+      "source_file": "6/9/1/4/69149/69149-0.txt",
+      "start_line": 12884,
+      "end_line": 12888,
+      "complexity": "normal",
+      "disagreement_type": "under_split",
+      "original_length": 193,
+      "seams_count": 3,
+      "comparison_count": 1
+    },
+    {
+      "original_text": "The rest had decided to return to their own people, but these, having nowhere else to go, volunteered gladly to join the expedition.  Cocoeni had some adventures to tell them of their perils by the way. Fortunately, however, they had all got clear of the Transvaal without disaster.  Their outfit was thoroughly complete to the smallest detail.",
+      "seams_sentences": [
+        "The rest had decided to return to their own people, but these, having nowhere else to go, volunteered gladly to join the expedition.",
+        "Cocoeni had some adventures to tell them of their perils by the way. Fortunately, however, they had all got clear of the Transvaal without disaster.",
+        "Their outfit was thoroughly complete to the smallest detail."
+      ],
+      "comparison_sentences": [
+        "The rest had decided to return to their own people, but these, having nowhere else to go, volunteered gladly to join the expedition.",
+        "Cocoeni had some adventures to tell them of their perils by the way.",
+        "Fortunately, however, they had all got clear of the Transvaal without disaster.",
+        "Their outfit was thoroughly complete to the smallest detail."
+      ],
+      "comparison_method": "sentences",
+      "source_file": "4/0/8/3/40838/40838-0.txt",
+      "start_line": 4996,
+      "end_line": 5004,
+      "complexity": "complex",
+      "disagreement_type": "over_split",
+      "original_length": 344,
+      "seams_count": 3,
+      "comparison_count": 4
+    },
+    {
+      "original_text": "Through the closed shutters a ray of light announced the presence of M. Cardez in his study. Marcel entered. The manager was seated before his desk writing. On seeing the son of his master he rose at once, and, without waiting to be questioned, began—  “Well! what did I tell you, M. Baradier? Here they are in open revolt! And that without the slightest plausible reason! Simply to do as their comrades! Their heads have been turned by the leaders of the strike. I have reasoned and talked gently to them, but all in vain; they are nothing but machines! Ah! you are interested in the workers, now you will learn to know them!”",
+      "seams_sentences": [
+        "Through the closed shutters a ray of light announced the presence of M. Cardez in his study.",
+        "Marcel entered. The manager was seated before his desk writing.",
+        "On seeing the son of his master he rose at once, and, without waiting to be questioned, began— “Well! what did I tell you, M. Baradier? Here they are in open revolt! And that without the slightest plausible reason! Simply to do as their comrades! Their heads have been turned by the leaders of the strike. I have reasoned and talked gently to them, but all in vain; they are nothing but machines! Ah! you are interested in the workers, now you will learn to know them!”"
+      ],
+      "comparison_sentences": [
+        "Through the closed shutters a ray of light announced the presence of M.",
+        "Cardez in his study.",
+        "Marcel entered.",
+        "The manager was seated before his desk writing.",
+        "On seeing the son of his master he rose at once, and, without waiting to be questioned, began— “Well! what did I tell you, M.",
+        "Baradier?",
+        "Here they are in open revolt!",
+        "And that without the slightest plausible reason!",
+        "Simply to do as their comrades!",
+        "Their heads have been turned by the leaders of the strike.",
+        "I have reasoned and talked gently to them, but all in vain; they are nothing but machines!",
+        "Ah! you are interested in the workers, now you will learn to know them!”"
+      ],
+      "comparison_method": "fast",
+      "source_file": "6/9/1/4/69149/69149-0.txt",
+      "start_line": 6964,
+      "end_line": 6974,
+      "complexity": "abbreviation",
+      "disagreement_type": "over_split",
+      "original_length": 627,
+      "seams_count": 3,
+      "comparison_count": 12
+    },
+    {
+      "original_text": "Ned treated the matter as a first-class joke, but told Stephanus that he should avoid open spaces near the sea, since he could not swim, and mountain ledges, since he could not fly.  \"For myself, I am as much at home in the water as on dry land; so also are my chums.  It was much more dangerous, however, at Madeira.\"",
+      "seams_sentences": [
+        "Ned treated the matter as a first-class joke, but told Stephanus that he should avoid open spaces near the sea, since he could not swim, and mountain ledges, since he could not fly.",
+        "\"For myself, I am as much at home in the water as on dry land; so also are my chums.",
+        "It was much more dangerous, however, at Madeira.\""
+      ],
+      "comparison_sentences": [
+        "Ned treated the matter as a first-class joke, but told Stephanus that he should avoid open spaces near the sea, since he could not swim, and mountain ledges, since he could not fly.",
+        "\"For myself, I am as much at home in the water as on dry land; so also are my chums.  It was much more dangerous, however, at Madeira.\""
+      ],
+      "comparison_method": "sentences",
+      "source_file": "4/0/8/3/40838/40838-0.txt",
+      "start_line": 1022,
+      "end_line": 1027,
+      "complexity": "dialog",
+      "disagreement_type": "under_split",
+      "original_length": 318,
+      "seams_count": 3,
+      "comparison_count": 2
+    },
+    {
+      "original_text": "“The ‘Monterey’!” Phil cried, joyfully hugging Sydney. “And Jack O’Neil is on board her.” But a second later his joy was changed to apprehension. Would the monitor appreciate the situation and be prepared to return this fire?",
+      "seams_sentences": [
+        "“The ‘Monterey’!” Phil cried, joyfully hugging Sydney.",
+        "“And Jack O’Neil is on board her.” But a second later his joy was changed to apprehension.",
+        "Would the monitor appreciate the situation and be prepared to return this fire?"
+      ],
+      "comparison_sentences": [
+        "“The ‘Monterey’!”",
+        "Phil cried, joyfully hugging Sydney.",
+        "“And Jack O’Neil is on board her.”",
+        "But a second later his joy was changed to apprehension.",
+        "Would the monitor appreciate the situation and be prepared to return this fire?"
+      ],
+      "comparison_method": "sentences",
+      "source_file": "6/7/4/7/67478/67478-0.txt",
+      "start_line": 4688,
+      "end_line": 4691,
+      "complexity": "normal",
+      "disagreement_type": "over_split",
+      "original_length": 225,
+      "seams_count": 3,
+      "comparison_count": 5
+    },
+    {
+      "original_text": "“This is surely the one which Ta-Ling tempted Langdon to take. But come,” he added hastily, “we must not allow him to be a minute longer in his chains.”  Taking the keys from Sydney’s hand, he opened the cell door and led the way to the door of Langdon’s prison.",
+      "seams_sentences": [
+        "“This is surely the one which Ta-Ling tempted Langdon to take.",
+        "But come,” he added hastily, “we must not allow him to be a minute longer in his chains.”",
+        "Taking the keys from Sydney’s hand, he opened the cell door and led the way to the door of Langdon’s prison."
+      ],
+      "comparison_sentences": [
+        "“This is surely the one which Ta-Ling tempted Langdon to take. But come,” he added hastily, “we must not allow him to be a minute longer in his chains.”",
+        "Taking the keys from Sydney’s hand, he opened the cell door and led the way to the door of Langdon’s prison."
+      ],
+      "comparison_method": "sentences",
+      "source_file": "6/7/4/7/67478/67478-0.txt",
+      "start_line": 3663,
+      "end_line": 3668,
+      "complexity": "complex",
+      "disagreement_type": "under_split",
+      "original_length": 262,
+      "seams_count": 3,
+      "comparison_count": 2
+    },
+    {
+      "original_text": "A singular metamorphosis had been wrought in him. The first time Baradier and his rival met at the Bourse the banker did not recognize Lichtenbach. He saw before him a thin, stooping man, almost bald, with cold, passionless eyes, hidden behind gold spectacles. His very voice had changed.",
+      "seams_sentences": [
+        "A singular metamorphosis had been wrought in him.",
+        "The first time Baradier and his rival met at the Bourse the banker did not recognize Lichtenbach. He saw before him a thin, stooping man, almost bald, with cold, passionless eyes, hidden behind gold spectacles.",
+        "His very voice had changed."
+      ],
+      "comparison_sentences": [
+        "A singular metamorphosis had been wrought in him.",
+        "The first time Baradier and his rival met at the Bourse the banker did not recognize Lichtenbach.",
+        "He saw before him a thin, stooping man, almost bald, with cold, passionless eyes, hidden behind gold spectacles.",
+        "His very voice had changed."
+      ],
+      "comparison_method": "fast",
+      "source_file": "6/9/1/4/69149/69149-0.txt",
+      "start_line": 1656,
+      "end_line": 1660,
+      "complexity": "normal",
+      "disagreement_type": "over_split",
+      "original_length": 288,
+      "seams_count": 3,
+      "comparison_count": 4
+    },
+    {
+      "original_text": "There ain’t nothing he is afraid of. I am glad,” he added, lowering his voice, although there was no one but a Chinese crew man within ear-shot, “to hear you tell me that our skipper ain’t going to lead this expedition. He’s all right when he gets good and mad, like he did when the fort fired at him to-night, but he ain’t got the initiative. Now, ‘Bucko’ Hughes, that’s his name on the foc’s’le, is different; he always likes to hit first.” Then he continued in a moralizing tone while he spun his wheel to steer the course to bring the ship’s lights on a proper bearing:  “The longer I live, Mr. Perry, the more I believe that’s the best tactics for a fighting man. If you hit first and hit hard enough maybe the other fellow’ll drop his fists and say he’s had enough.”  Phil slapped the sailor on the back in sign of agreement with his views, while O’Neil brought the “Phœnix’s” lights, now close aboard, broad on his beam in order to round to for a landing at the gangway, and in answer to a hoarse challenge from the gunboat, he sang out in his clear voice:  “Aye! Aye!”",
+      "seams_sentences": [
+        "There ain’t nothing he is afraid of.",
+        "I am glad,” he added, lowering his voice, although there was no one but a Chinese crew man within ear-shot, “to hear you tell me that our skipper ain’t going to lead this expedition. He’s all right when he gets good and mad, like he did when the fort fired at him to-night, but he ain’t got the initiative. Now, ‘Bucko’ Hughes, that’s his name on the foc’s’le, is different; he always likes to hit first.” Then he continued in a moralizing tone while he spun his wheel to steer the course to bring the ship’s lights on a proper bearing: “The longer I live, Mr. Perry, the more I believe that’s the best tactics for a fighting man. If you hit first and hit hard enough maybe the other fellow’ll drop his fists and say he’s had enough.”",
+        "Phil slapped the sailor on the back in sign of agreement with his views, while O’Neil brought the “Phœnix’s” lights, now close aboard, broad on his beam in order to round to for a landing at the gangway, and in answer to a hoarse challenge from the gunboat, he sang out in his clear voice: “Aye! Aye!”"
+      ],
+      "comparison_sentences": [
+        "“That captain of yours, Mr. Perry, is a fire-eater. There ain’t nothing he is afraid of. I am glad,” he added, lowering his voice, although there was no one but a Chinese crew man within ear-shot, “to hear you tell me that our skipper ain’t going to lead this expedition. He’s all right when he gets good and mad, like he did when the fort fired at him to-night, but he ain’t got the initiative. Now, ‘Bucko’ Hughes, that’s his name on the foc’s’le, is different; he always likes to hit first.”",
+        "Then he continued in a moralizing tone while he spun his wheel to steer the course to bring the ship’s lights on a proper bearing:",
+        "“The longer I live, Mr. Perry, the more I believe that’s the best tactics for a fighting man. If you hit first and hit hard enough maybe the other fellow’ll drop his fists and say he’s had enough.”",
+        "Phil slapped the sailor on the back in sign of agreement with his views, while O’Neil brought the “Phœnix’s” lights, now close aboard, broad on his beam in order to round to for a landing at the gangway, and in answer to a hoarse challenge from the gunboat, he sang out in his clear voice:",
+        "“Aye! Aye!”"
+      ],
+      "comparison_method": "sentences",
+      "source_file": "6/7/4/7/67478/67478-0.txt",
+      "start_line": 5102,
+      "end_line": 5122,
+      "complexity": "abbreviation",
+      "disagreement_type": "over_split",
+      "original_length": 1076,
+      "seams_count": 3,
+      "comparison_count": 5
+    },
+    {
+      "original_text": "Agostini laughed, but made no promise. And Marcel said to himself: “His compatriot? An Italian? It is Anetta, I am sure of it. What is she doing here with this villain? The army once more in danger, for she has made the acquaintance of Colonel Derbaut, a staff-officer.” Meanwhile, he had lost the thread of the conversation, but a second sentence told him all that was necessary—  “Very good! To-night, at the opera?”",
+      "seams_sentences": [
+        "Agostini laughed, but made no promise.",
+        "And Marcel said to himself: “His compatriot? An Italian? It is Anetta, I am sure of it. What is she doing here with this villain? The army once more in danger, for she has made the acquaintance of Colonel Derbaut, a staff-officer.”",
+        "Meanwhile, he had lost the thread of the conversation, but a second sentence told him all that was necessary— “Very good! To-night, at the opera?”"
+      ],
+      "comparison_sentences": [
+        "Agostini laughed, but made no promise.",
+        "And Marcel said to himself: “His compatriot?",
+        "An Italian?",
+        "It is Anetta, I am sure of it.",
+        "What is she doing here with this villain?",
+        "The army once more in danger, for she has made the acquaintance of Colonel Derbaut, a staff-officer.”",
+        "Meanwhile, he had lost the thread of the conversation, but a second sentence told him all that was necessary— “Very good!",
+        "To-night, at the opera?”"
+      ],
+      "comparison_method": "fast",
+      "source_file": "6/9/1/4/69149/69149-0.txt",
+      "start_line": 11154,
+      "end_line": 11161,
+      "complexity": "dialog",
+      "disagreement_type": "over_split",
+      "original_length": 418,
+      "seams_count": 3,
+      "comparison_count": 8
+    },
+    {
+      "original_text": "Is everything progressing as you wish?”  “Yes, father, I should be very ungrateful if I were not satisfied. You let me do whatever I want. But I hope you are well pleased yourself, also.”  “Certainly, little one, and I wish us always to remain so. But, you know, some day we shall be obliged to separate.”",
+      "seams_sentences": [
+        "Is everything progressing as you wish?”",
+        "“Yes, father, I should be very ungrateful if I were not satisfied. You let me do whatever I want. But I hope you are well pleased yourself, also.”",
+        "“Certainly, little one, and I wish us always to remain so. But, you know, some day we shall be obliged to separate.”"
+      ],
+      "comparison_sentences": [
+        "“Yes, father, I should be very ungrateful if I were not satisfied. You let me do whatever I want. But I hope you are well pleased yourself, also.”",
+        "“Certainly, little one, and I wish us always to remain so. But, you know, some day we shall be obliged to separate.” Marianne looked serious; her smile vanished."
+      ],
+      "comparison_method": "fast",
+      "source_file": "6/9/1/4/69149/69149-0.txt",
+      "start_line": 11672,
+      "end_line": 11679,
+      "complexity": "normal",
+      "disagreement_type": "under_split",
+      "original_length": 305,
+      "seams_count": 3,
+      "comparison_count": 2
+    },
+    {
+      "original_text": "[Illustration]    Illustrated _by_ Ralph L. Boyer    THE PENN PUBLISHING   COMPANY PHILADELPHIA   MCMIX       COPYRIGHT   1909 BY   THE PENN   PUBLISHING   COMPANY    [Illustration]     Introduction   Those who have read “A United States Midshipman Afloat” will recall that Philip Perry and his friend, Sydney Monroe, recent graduates of the Naval Academy at Annapolis, had been but a short time in the regular naval service when the battle-ship “Connecticut,” to which they had been assigned, was ordered to a South American port.",
+      "seams_sentences": [
+        "[Illustration]",
+        "Illustrated _by_ Ralph L. Boyer THE PENN PUBLISHING COMPANY PHILADELPHIA MCMIX COPYRIGHT 1909 BY THE PENN PUBLISHING COMPANY [Illustration]",
+        "Introduction Those who have read “A United States Midshipman Afloat” will recall that Philip Perry and his friend, Sydney Monroe, recent graduates of the Naval Academy at Annapolis, had been but a short time in the regular naval service when the battle-ship “Connecticut,” to which they had been assigned, was ordered to a South American port."
+      ],
+      "comparison_sentences": [
+        "Those who have read “A United States Midshipman Afloat” will recall that Philip Perry and his friend, Sydney Monroe, recent graduates of the Naval Academy at Annapolis, had been but a short time in the regular naval service when the battle-ship “Connecticut,” to which they had been assigned, was ordered to a South American port."
+      ],
+      "comparison_method": "sentences",
+      "source_file": "6/7/4/7/67478/67478-0.txt",
+      "start_line": 20,
+      "end_line": 49,
+      "complexity": "abbreviation",
+      "disagreement_type": "under_split",
+      "original_length": 531,
+      "seams_count": 3,
+      "comparison_count": 1
+    },
+    {
+      "original_text": "NOTE.--The seven prohibited degrees were reduced to four at the      Fourth Lateran Council (1215). By Civil law the degrees were thus      counted,--             0           |     +-----+-----+     |           |     10          10     |           |     20          20     \\----\\ /----/           4       But by Canon law--            0           |     +-----+-----+     |           |     0.....1.....0     |           |     0.....2.....0     CHAPTER IV  A HWYL   A Welsh church at the period of the Norman Conquest was much what it had been from the time when Christianity had been adopted by the Britons. It was of wood, as has been already stated.",
+      "seams_sentences": [
+        "NOTE.--The seven prohibited degrees were reduced to four at the Fourth Lateran Council (1215).",
+        "By Civil law the degrees were thus counted,-- 0 | +-----+-----+ | | 10 10 | | 20 20 \\----\\ /----/ 4 But by Canon law-- 0 | +-----+-----+ | | 0.....1.....0 | | 0.....2.....0 CHAPTER IV A HWYL A Welsh church at the period of the Norman Conquest was much what it had been from the time when Christianity had been adopted by the Britons.",
+        "It was of wood, as has been already stated."
+      ],
+      "comparison_sentences": [
+        "By Civil law the degrees were thus      counted,--     +-----+-----+     |           |     10          10     |           |     20          20     \\----\\ /----/      But by Canon law--     +-----+-----+     |           |     0.....1.....0     |           |     0.....2.....0 A Welsh church at the period of the Norman Conquest was much what it had been from the time when Christianity had been adopted by the Britons.",
+        "It was of wood, as has been already stated."
+      ],
+      "comparison_method": "fast",
+      "source_file": "4/2/0/1/42011/42011-0.txt",
+      "start_line": 919,
+      "end_line": 954,
+      "complexity": "abbreviation",
+      "disagreement_type": "under_split",
+      "original_length": 650,
+      "seams_count": 3,
+      "comparison_count": 2
+    },
+    {
+      "original_text": "“No; he is unmarried, and has never been seen in the company of a lady.”  Marcel changed the conversation, made an excuse for leaving his companion, and went to the writing-room. Taking up a directory, he found a recent indication, handwritten as follows: “Count Cesare Agostini, 7 Rue du Colisée.”",
+      "seams_sentences": [
+        "“No; he is unmarried, and has never been seen in the company of a lady.”",
+        "Marcel changed the conversation, made an excuse for leaving his companion, and went to the writing-room.",
+        "Taking up a directory, he found a recent indication, handwritten as follows: “Count Cesare Agostini, 7 Rue du Colisée.”"
+      ],
+      "comparison_sentences": [
+        "“No; he is unmarried, and has never been seen in the company of a lady.” Marcel changed the conversation, made an excuse for leaving his companion, and went to the writing-room.",
+        "Taking up a directory, he found a recent indication, handwritten as follows: “Count Cesare Agostini, 7 Rue du Colisée.”"
+      ],
+      "comparison_method": "fast",
+      "source_file": "6/9/1/4/69149/69149-0.txt",
+      "start_line": 11111,
+      "end_line": 11116,
+      "complexity": "complex",
+      "disagreement_type": "under_split",
+      "original_length": 298,
+      "seams_count": 3,
+      "comparison_count": 2
+    },
+    {
+      "original_text": "Langdon echoed, approaching the speaker. “I’ve talked with him many a time, and you can take my word for it, there isn’t a man in all China whom I wouldn’t sooner have for my enemy. He’s a past craftsman in oriental subtlety and diplomacy.",
+      "seams_sentences": [
+        "Langdon echoed, approaching the speaker.",
+        "“I’ve talked with him many a time, and you can take my word for it, there isn’t a man in all China whom I wouldn’t sooner have for my enemy.",
+        "He’s a past craftsman in oriental subtlety and diplomacy."
+      ],
+      "comparison_sentences": [
+        "Langdon echoed, approaching the speaker.",
+        "“I’ve talked with him many a time, and you can take my word for it, there isn’t a man in all China whom I wouldn’t sooner have for my enemy. He’s a past craftsman in oriental subtlety and diplomacy. He rules his own people with a rod of iron, and if an official displeases him, off goes his head in the most approved Chinese fashion.”"
+      ],
+      "comparison_method": "sentences",
+      "source_file": "6/7/4/7/67478/67478-0.txt",
+      "start_line": 170,
+      "end_line": 173,
+      "complexity": "normal",
+      "disagreement_type": "under_split",
+      "original_length": 239,
+      "seams_count": 3,
+      "comparison_count": 2
+    },
+    {
+      "original_text": "It was upon its summit, doubtless, that the old Apostle had knelt--not in the bed of the torrent, although the folk insisted on the latter, misled by the hollows worn in the rock.  Pabo, moved by an inward impulse, mounted the block, wrenched, like himself, from its proper place and cast far away, never to return to it. Never to return. That thought filled his mind; he need not attempt to delude himself with hopes.",
+      "seams_sentences": [
+        "It was upon its summit, doubtless, that the old Apostle had knelt--not in the bed of the torrent, although the folk insisted on the latter, misled by the hollows worn in the rock.",
+        "Pabo, moved by an inward impulse, mounted the block, wrenched, like himself, from its proper place and cast far away, never to return to it. Never to return.",
+        "That thought filled his mind; he need not attempt to delude himself with hopes."
+      ],
+      "comparison_sentences": [
+        "It was upon its summit, doubtless, that the old Apostle had knelt--not in the bed of the torrent, although the folk insisted on the latter, misled by the hollows worn in the rock.",
+        "Pabo, moved by an inward impulse, mounted the block, wrenched, like himself, from its proper place and cast far away, never to return to it.",
+        "Never to return.",
+        "That thought filled his mind; he need not attempt to delude himself with hopes."
+      ],
+      "comparison_method": "fast",
+      "source_file": "4/2/0/1/42011/42011-0.txt",
+      "start_line": 2217,
+      "end_line": 2225,
+      "complexity": "complex",
+      "disagreement_type": "over_split",
+      "original_length": 418,
+      "seams_count": 3,
+      "comparison_count": 4
+    }
+  ]
+}

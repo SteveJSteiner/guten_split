@@ -1,0 +1,232 @@
+{
+  "metadata": {
+    "total_examples": 10,
+    "disagreement_distribution": {
+      "over_split": 6,
+      "under_split": 4
+    },
+    "complexity_distribution": {
+      "abbreviation": 4,
+      "complex": 2,
+      "dialog": 2,
+      "normal": 2
+    },
+    "description": "Gold-set focused on sentence boundary disagreements"
+  },
+  "examples": [
+    {
+      "original_text": "A. Huntley was born in Providence, R. I., November 2, 1843.   J. J. KELLY was one of the best known vocalists in minstrelsy. He entered the profession about 1853, and had been with such famous companies as Emerson’s, Haverly’s, Bryant’s, in New York; Barlow, Wilson, Primrose and West’s; and Morris Bros., Pell and Trowbridge’s in Boston.",
+      "seams_sentences": [
+        "A. Huntley was born in Providence, R. I., November 2, 1843.",
+        "J. J. KELLY was one of the best known vocalists in minstrelsy.",
+        "He entered the profession about 1853, and had been with such famous companies as Emerson’s, Haverly’s, Bryant’s, in New York; Barlow, Wilson, Primrose and West’s; and Morris Bros., Pell and Trowbridge’s in Boston."
+      ],
+      "fast_sentences": [
+        "Huntley was born in Providence, R.",
+        "I., November 2, 1843.",
+        "KELLY was one of the best known vocalists in minstrelsy.",
+        "He entered the profession about 1853, and had been with such famous companies as Emerson’s, Haverly’s, Bryant’s, in New York; Barlow, Wilson, Primrose and West’s; and Morris Bros., Pell and Trowbridge’s in Boston."
+      ],
+      "source_file": "69826-0.txt",
+      "start_line": 10687,
+      "end_line": 10694,
+      "complexity": "abbreviation",
+      "disagreement_type": "over_split",
+      "original_length": 338,
+      "seams_count": 3,
+      "fast_count": 4
+    },
+    {
+      "original_text": "Reeves was born in New York, May 30, 1864.   EUGENE STRATTON (Ruhlman), who is at the present time one of the most pronounced favorites in England of any man that ever blacked his face, began his stage career about 1878 as one of the Four Arnold Brothers.  On the 21st day of October, that year, he opened at Chicago with Haverly’s Original Mastodon Minstrels.",
+      "seams_sentences": [
+        "Reeves was born in New York, May 30, 1864.",
+        "EUGENE STRATTON (Ruhlman), who is at the present time one of the most pronounced favorites in England of any man that ever blacked his face, began his stage career about 1878 as one of the Four Arnold Brothers.",
+        "On the 21st day of October, that year, he opened at Chicago with Haverly’s Original Mastodon Minstrels."
+      ],
+      "fast_sentences": [
+        "Reeves was born in New York, May 30, 1864.",
+        "EUGENE STRATTON (Ruhlman), who is at the present time one of the most pronounced favorites in England of any man that ever blacked his face, began his stage career about 1878 as one of the Four Arnold Brothers.",
+        "On the 21st day of October, that year, he opened at Chicago with Haverly’s Original Mastodon Minstrels.",
+        "Eugene Stratton was born in Buffalo, N.",
+        "Y., about 1864.",
+        "He was born in New York, January 7, 1865."
+      ],
+      "source_file": "69826-0.txt",
+      "start_line": 19387,
+      "end_line": 19395,
+      "complexity": "complex",
+      "disagreement_type": "over_split",
+      "original_length": 360,
+      "seams_count": 3,
+      "fast_count": 6
+    },
+    {
+      "original_text": "He is said to have died about ten years ago.   BILLY SHEPPARD was equally famous for his neat and artistic songs and dances, and for his rendition of the “Anvil Chorus” on the banjo.  He had been with many prominent minstrel companies, notably with the San Franciscos in California in 1865; Griffin and Christy’s in New York, two years later, and in the Summer of 1869 played in England with Smith and Taylor’s Minstrels; in 1870 he was with Hooley in Brooklyn, N. Y., and with Hooley’s in Chicago in 1871.",
+      "seams_sentences": [
+        "He is said to have died about ten years ago.",
+        "BILLY SHEPPARD was equally famous for his neat and artistic songs and dances, and for his rendition of the “Anvil Chorus” on the banjo.",
+        "He had been with many prominent minstrel companies, notably with the San Franciscos in California in 1865; Griffin and Christy’s in New York, two years later, and in the Summer of 1869 played in England with Smith and Taylor’s Minstrels; in 1870 he was with Hooley in Brooklyn, N. Y., and with Hooley’s in Chicago in 1871."
+      ],
+      "fast_sentences": [
+        "He is said to have died about ten years ago.",
+        "BILLY SHEPPARD was equally famous for his neat and artistic songs and dances, and for his rendition of the “Anvil Chorus” on the banjo.",
+        "He had been with many prominent minstrel companies, notably with the San Franciscos in California in 1865; Griffin and Christy’s in New York, two years later, and in the Summer of 1869 played in England with Smith and Taylor’s Minstrels; in 1870 he was with Hooley in Brooklyn, N.",
+        "Y., and with Hooley’s in Chicago in 1871.",
+        "Mr. Sheppard died at Ft."
+      ],
+      "source_file": "69826-0.txt",
+      "start_line": 9972,
+      "end_line": 9982,
+      "complexity": "dialog",
+      "disagreement_type": "over_split",
+      "original_length": 506,
+      "seams_count": 3,
+      "fast_count": 5
+    },
+    {
+      "original_text": "FRANK V. CHASE formed a partnership with Dan Swift about 1881, and made their first appearance at the Front Street Theatre, Baltimore, Md., doing a black-face musical act--and an exceptionally good one.  They played engagements with Johnson and Slavin’s, Primrose and West’s, and the Cleveland-Wilson Minstrels; they were with the latter in August, 1898.  Frank V. Chase was born in Baltimore; he died there February 11, 1899; age 36 years.",
+      "seams_sentences": [
+        "FRANK V. CHASE formed a partnership with Dan Swift about 1881, and made their first appearance at the Front Street Theatre, Baltimore, Md., doing a black-face musical act--and an exceptionally good one.",
+        "They played engagements with Johnson and Slavin’s, Primrose and West’s, and the Cleveland-Wilson Minstrels; they were with the latter in August, 1898.",
+        "Frank V. Chase was born in Baltimore; he died there February 11, 1899; age 36 years."
+      ],
+      "fast_sentences": [
+        "FRANK V.",
+        "CHASE formed a partnership with Dan Swift about 1881, and made their first appearance at the Front Street Theatre, Baltimore, Md., doing a black-face musical act--and an exceptionally good one.",
+        "They played engagements with Johnson and Slavin’s, Primrose and West’s, and the Cleveland-Wilson Minstrels; they were with the latter in August, 1898.",
+        "Frank V.",
+        "Chase was born in Baltimore; he died there February 11, 1899; age 36 years."
+      ],
+      "source_file": "69826-0.txt",
+      "start_line": 19125,
+      "end_line": 19135,
+      "complexity": "abbreviation",
+      "disagreement_type": "over_split",
+      "original_length": 440,
+      "seams_count": 3,
+      "fast_count": 5
+    },
+    {
+      "original_text": "January 9, 1875 he opened with Simmons and Slocum’s Minstrels in Philadelphia, and the following season was a member of Simmons, Slocum and Sweatnam’s Minstrels in the same city. His last engagement was with Emerson’s Minstrels, December 25, 1878.  Sig.",
+      "seams_sentences": [
+        "January 9, 1875 he opened with Simmons and Slocum’s Minstrels in Philadelphia, and the following season was a member of Simmons, Slocum and Sweatnam’s Minstrels in the same city.",
+        "His last engagement was with Emerson’s Minstrels, December 25, 1878.",
+        "Sig."
+      ],
+      "fast_sentences": [
+        "January 9, 1875 he opened with Simmons and Slocum’s Minstrels in Philadelphia, and the following season was a member of Simmons, Slocum and Sweatnam’s Minstrels in the same city.",
+        "His last engagement was with Emerson’s Minstrels, December 25, 1878."
+      ],
+      "source_file": "69826-0.txt",
+      "start_line": 8350,
+      "end_line": 8355,
+      "complexity": "normal",
+      "disagreement_type": "under_split",
+      "original_length": 253,
+      "seams_count": 3,
+      "fast_count": 2
+    },
+    {
+      "original_text": "CHARLEY FOX was one of the most popular comedians and banjoists of his day.  His first appearance was in 1848. About 1854 he came to New York, and for many years was identified with the best permanent organizations.",
+      "seams_sentences": [
+        "CHARLEY FOX was one of the most popular comedians and banjoists of his day.",
+        "His first appearance was in 1848.",
+        "About 1854 he came to New York, and for many years was identified with the best permanent organizations."
+      ],
+      "fast_sentences": [
+        "CHARLEY FOX was one of the most popular comedians and banjoists of his day.",
+        "His first appearance was in 1848.",
+        "About 1854 he came to New York, and for many years was identified with the best permanent organizations.",
+        "His last appearance was December 22, 1864."
+      ],
+      "source_file": "69826-0.txt",
+      "start_line": 5001,
+      "end_line": 5006,
+      "complexity": "normal",
+      "disagreement_type": "over_split",
+      "original_length": 215,
+      "seams_count": 3,
+      "fast_count": 4
+    },
+    {
+      "original_text": "HENRY RICE, long famous for his burlesque female impersonations, sat on the end with his own minstrel company in Cincinnati, September, 1872.         *       *       *       *       *   “PONY” MOORE (George Washington Moore). This unique character in minstrelsy, up to the time of his death, enjoyed the double distinction of being the oldest living minstrel, as well as having attained greater longevity than any other known black-face performer.",
+      "seams_sentences": [
+        "HENRY RICE, long famous for his burlesque female impersonations, sat on the end with his own minstrel company in Cincinnati, September, 1872.",
+        "* * * * * “PONY” MOORE (George Washington Moore).",
+        "This unique character in minstrelsy, up to the time of his death, enjoyed the double distinction of being the oldest living minstrel, as well as having attained greater longevity than any other known black-face performer."
+      ],
+      "fast_sentences": [
+        "HENRY RICE, long famous for his burlesque female impersonations, sat on the end with his own minstrel company in Cincinnati, September, 1872.        *       *       *       *       * “PONY” MOORE (George Washington Moore).",
+        "This unique character in minstrelsy, up to the time of his death, enjoyed the double distinction of being the oldest living minstrel, as well as having attained greater longevity than any other known black-face performer."
+      ],
+      "source_file": "69826-0.txt",
+      "start_line": 3535,
+      "end_line": 3545,
+      "complexity": "complex",
+      "disagreement_type": "under_split",
+      "original_length": 447,
+      "seams_count": 3,
+      "fast_count": 2
+    },
+    {
+      "original_text": "*       *       *       *       *  Tom Lewis says that when making the parade in Lynchburg, Va., about ten or twelve years ago, a “rube” asked him (Lewis) what “society” it was. “Sons of Poor Parents,” replied Lewis.  Billy West, who happened to overhear the retort, also said something.         *       *       *       *       *   WM.",
+      "seams_sentences": [
+        "* * * * * Tom Lewis says that when making the parade in Lynchburg, Va., about ten or twelve years ago, a “rube” asked him (Lewis) what “society” it was. “Sons of Poor Parents,” replied Lewis.",
+        "Billy West, who happened to overhear the retort, also said something.",
+        "* * * * * WM."
+      ],
+      "fast_sentences": [
+        "J., April, 1836; he died in New York City, November 10, 1889.        *       *       *       *       * Tom Lewis says that when making the parade in Lynchburg, Va., about ten or twelve years ago, a “rube” asked him (Lewis) what “society” it was."
+      ],
+      "source_file": "69826-0.txt",
+      "start_line": 5778,
+      "end_line": 5789,
+      "complexity": "dialog",
+      "disagreement_type": "under_split",
+      "original_length": 335,
+      "seams_count": 3,
+      "fast_count": 1
+    },
+    {
+      "original_text": "He was born in Virginia about 1815.  [Illustration:    FRANK WARD   (of the Original Clipper Quartette)    HARRY A. ELLIS   (of the Original “The Quartette”)",
+      "seams_sentences": [
+        "He was born in Virginia about 1815.",
+        "[Illustration: FRANK WARD (of the Original Clipper Quartette)",
+        "HARRY A. ELLIS (of the Original “The Quartette”)"
+      ],
+      "fast_sentences": [
+        "He was born in Virginia about 1815."
+      ],
+      "source_file": "69826-0.txt",
+      "start_line": 3209,
+      "end_line": 3218,
+      "complexity": "abbreviation",
+      "disagreement_type": "under_split",
+      "original_length": 157,
+      "seams_count": 3,
+      "fast_count": 1
+    },
+    {
+      "original_text": "He was the author of several prominent songs, among which were “Cigarette McCarthy,” and “It’s A Long Lane That Has No Turn.”  Daniel E. Lyons died in Boston, Mass., January 3, 1890; age 31 years.   CHAS.",
+      "seams_sentences": [
+        "He was the author of several prominent songs, among which were “Cigarette McCarthy,” and “It’s A Long Lane That Has No Turn.”",
+        "Daniel E. Lyons died in Boston, Mass., January 3, 1890; age 31 years.",
+        "CHAS."
+      ],
+      "fast_sentences": [
+        "He was the author of several prominent songs, among which were “Cigarette McCarthy,” and “It’s A Long Lane That Has No Turn.”",
+        "Daniel E.",
+        "Lyons died in Boston, Mass., January 3, 1890; age 31 years.",
+        "CHAS."
+      ],
+      "source_file": "69826-0.txt",
+      "start_line": 17829,
+      "end_line": 17835,
+      "complexity": "abbreviation",
+      "disagreement_type": "over_split",
+      "original_length": 204,
+      "seams_count": 3,
+      "fast_count": 4
+    }
+  ]
+}

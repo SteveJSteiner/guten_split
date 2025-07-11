@@ -1,0 +1,218 @@
+{
+  "metadata": {
+    "total_examples": 20,
+    "complexity_distribution": {
+      "normal": 8,
+      "dialog": 6,
+      "complex": 4,
+      "abbreviation": 2
+    },
+    "method_distribution": {
+      "seams_only": 18,
+      "seams": 2
+    },
+    "description": "Gold-set sentences from Gutenberg corpus discrepancy analysis"
+  },
+  "sentences": [
+    {
+      "text": "SIDNEY’S   JOY RIDER    CLARABELLE JEROME’S   JOYLAND    [Illustration]",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "normal",
+      "length": 71,
+      "line_number": 21992,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "His first prominent minstrel engagement was with Carncross and Dixey, in Philadelphia.",
+      "source_file": "69826-0.txt",
+      "method": "seams",
+      "complexity": "normal",
+      "length": 86,
+      "line_number": 15228,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "E.--HINES & BLOSSOM--NAT.   (Portraits reversed)",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "dialog",
+      "length": 48,
+      "line_number": 11359,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "A complete history of the old and present   day favorites.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "normal",
+      "length": 58,
+      "line_number": 22060,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "He was of the song and dance teams of Chace and Davis, Chace and Yale and Chace and Buckley.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "normal",
+      "length": 92,
+      "line_number": 16870,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "WALTERS and MORTON formed a partnership at East Saginaw, Mich., where they first performed August 12, 1872.",
+      "source_file": "69826-0.txt",
+      "method": "seams",
+      "complexity": "normal",
+      "length": 107,
+      "line_number": 13118,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "In 1874 he was with Harry Robinson’s Minstrels and the following year with one of Leavitt’s attractions.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "normal",
+      "length": 104,
+      "line_number": 14473,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "CAMERON, formerly known as Alex Cameron, a prominent singer of latter-day minstrelsy, made his first appearance as a Madrigal Boy in Haverly’s Minstrels in 1888; subsequently he joined the Gorman Bros.’ Minstrels, remaining with that organization for six years.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "complex",
+      "length": 261,
+      "line_number": 19325,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "And not only that, but he played black-face parts with Joe Weber’s “Hip, Hip, Hooray” Company; “Natural Gas” and “The Rainmakers;” with the latter originating the “darky” role in the play.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "complex",
+      "length": 188,
+      "line_number": 19886,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "JOHN J. BLUE, an efficient dancer of the present generation successfully conducted a dancing school in Hoboken, N. J., about eight years; desiring wider scope for his talents, he engaged with the Cohan and Harris’ Minstrels at their inception in July, 1908; he remained the season, and re-engaged for 1909-10.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "abbreviation",
+      "length": 309,
+      "line_number": 21675,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "*       *       *       *       *  They tell this one about the famous Billy Manning--Manning’s Company and that of Dan Bryant met on one occasion on the road; in the course of the conversation it turned out that Bryant’s Company was to follow Manning’s in at a certain town; Dan Bryant requested Manning to “announce” the coming of his (Bryant’s) troupe; which of course, Manning promised to do.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "dialog",
+      "length": 396,
+      "line_number": 15528,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "Driven to desperation, and forgetful in the emergency of every sense of propriety, Cuff, in ludicrous undress as he was, started from his place, rushed upon the stage, and laying his hand upon the performer’s shoulder, called out excitedly: “Massa Rice, Massa Rice, gi’ me nigga’s hat--nigga’s coat--nigga’s shoes--gi’ me nigga’s t’ings! Massa Griffif wants ’im--STEAMBOAT’S COMIN’!!”",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "dialog",
+      "length": 384,
+      "line_number": 2409,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "Hague, Dave Reed and many others, eliminate the matter of doubt entirely.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "normal",
+      "length": 73,
+      "line_number": 104,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "It will not surprise many to know that this famous young author-actor-manager-producer, etc., ever appeared in black-face; the year is said to be 1891, when he played Banty Bob in his father’s production of “The Molly Maguires”; nor must it be overlooked that he was co-proprietor and part producer of Cohan and Harris’ Minstrels, the first performance of which was at the Apollo Theatre, Atlantic City, N. J., July 27, 1908.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "dialog",
+      "length": 425,
+      "line_number": 21411,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "Yours in German,   SAM BERNARD.    “Use my name any time you want to and tell them I said MADISON’S   BUDGET is the best ever! Fine and daisy and worth a hundred times the   price.”",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "dialog",
+      "length": 181,
+      "line_number": 22225,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "It was while with the latter organization that Mr. Chipman conceived the dark design of becoming a burlesque manager; this was in Nyack, N. Y., December, 1898.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "abbreviation",
+      "length": 159,
+      "line_number": 20263,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "[Illustration: CHARLES HILLIARD.]",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "complex",
+      "length": 33,
+      "line_number": 16639,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "NED GREENLAND was one of the best beloved characters in theatredom. Though many years dead, his praises are yet sung to-day.",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "normal",
+      "length": 124,
+      "line_number": 5576,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "SHEPARD    PAUL VERNON  FAMED FAVORITES WHO FEATURED FEMININE FANCIES--SECOND EDITION.]",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "dialog",
+      "length": 87,
+      "line_number": 15120,
+      "context_before": "",
+      "context_after": ""
+    },
+    {
+      "text": "=“Mandy Lane”=    =“Linda”   (Won’t you throw a Kiss to Me?)=    =“Lady Love”=    =“Dancing on the   Levee”=    =“Emmalina Lee”=    =MAY IRWIN’S   “Matrimony”   and   “She Borrowed   My Only   Husband”=    Writer of the   American version   “Has Anybody   Here Seen Kelly”",
+      "source_file": "69826-0.txt",
+      "method": "seams_only",
+      "complexity": "complex",
+      "length": 272,
+      "line_number": 22000,
+      "context_before": "",
+      "context_after": ""
+    }
+  ]
+}
