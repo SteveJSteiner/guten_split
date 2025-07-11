@@ -26,13 +26,17 @@ def get_system_info() -> Dict[str, Any]:
         "architecture": platform.machine()
     }
 
-def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None) -> Dict[str, Any]:
+def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None, max_cpus: int = None) -> Dict[str, Any]:
     """Run seams benchmark and extract results."""
     benchmark_start = time.time()
     
     print("🔨 Building seams...")
     if max_files:
         print(f"   Note: seams will process ALL files (--max-files not supported yet)")
+    if max_cpus:
+        print(f"   Running with max-cpus: {max_cpus}")
+    else:
+        print(f"   Running with default CPU configuration")
     
     # Build seams first
     build_result = subprocess.run(
@@ -54,6 +58,8 @@ def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None) -
     # Run seams benchmark
     start_time = time.time()
     cmd = ["./target/release/seams", root_dir, "--stats-out", stats_file, "--overwrite-all"]
+    if max_cpus:
+        cmd.extend(["--max-cpus", str(max_cpus)])
     # Note: seams doesn't support --max-files yet, so it processes all files
     
     result = subprocess.run(
@@ -337,11 +343,15 @@ def show_current_leaderboard(results: List[Dict[str, Any]]) -> None:
     rankings = []
     for result in successful_results:
         stats = result["stats"]
-        if "overall_chars_per_sec" in stats:
-            throughput = stats["overall_chars_per_sec"]
+        # Use sentence detection throughput consistently across all tools
+        if "sentence_detection_chars_per_sec" in stats:
+            # Seams sentence detection throughput
+            throughput = stats["sentence_detection_chars_per_sec"]
         elif "aggregate_chars_per_sec" in stats:
+            # Legacy seams format
             throughput = stats["aggregate_chars_per_sec"]
         else:
+            # Python tools sentence detection throughput
             throughput = stats.get("aggregate_throughput_chars_per_sec", 0)
         
         # Get e2e time
@@ -473,9 +483,16 @@ def main():
     print(f"🧠 Memory: {system_info.get('memory_gb', 'Unknown')} GB")
     print()
     
-    # Run seams benchmark
-    seams_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json", args.max_files)
-    results.append(seams_result)
+    # Run seams benchmarks (both single-CPU and default)
+    print("🔨 Running seams single-CPU benchmark...")
+    seams_single_result = run_seams_benchmark(args.root_dir, "seams_single_cpu_stats.json", args.max_files, max_cpus=1)
+    seams_single_result["tool"] = "seams-single-cpu"  # Distinguish in results
+    results.append(seams_single_result)
+    
+    print("🔨 Running seams default (multi-CPU) benchmark...")
+    seams_multi_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json", args.max_files)
+    seams_multi_result["tool"] = "seams"  # Keep original name
+    results.append(seams_multi_result)
     
     # Run Python benchmarks (using venv python)
     python_benchmarks = [
@@ -525,14 +542,53 @@ def main():
     
     successful_results = [r for r in all_results if r.get("success")]
     
-    # Sort to put seams first, then others alphabetically
-    successful_results.sort(key=lambda x: (0 if x.get("tool") == "seams" else 1, x.get("tool", "")))
+    # Sort to put seams variants first, then others alphabetically
+    def sort_key(x):
+        tool = x.get("tool", "")
+        if tool == "seams":
+            return (0, 0)  # seams multi-CPU first
+        elif tool == "seams-single-cpu":
+            return (0, 1)  # seams single-CPU second
+        else:
+            return (1, tool)  # others alphabetically
+    
+    successful_results.sort(key=sort_key)
+
+    # Find best performers for each metric to apply bold formatting
+    best_time = min((r.get("stats", {}).get("benchmark_e2e_time_s", float('inf')) for r in successful_results if r.get("stats", {}).get("benchmark_e2e_time_s", 0) > 0), default=float('inf'))
+    best_speed_up = max((
+        (nupunkt_e2e_time / r.get("stats", {}).get("benchmark_e2e_time_s", float('inf'))) 
+        for r in successful_results 
+        if r.get("stats", {}).get("benchmark_e2e_time_s", 0) > 0
+    ), default=0)
+    best_sentences_per_sec = max((
+        (r.get("stats", {}).get("total_sentences_detected", 0) or r.get("stats", {}).get("total_sentences", 0)) / 
+        r.get("stats", {}).get("benchmark_e2e_time_s", float('inf'))
+        for r in successful_results 
+        if r.get("stats", {}).get("benchmark_e2e_time_s", 0) > 0
+    ), default=0)
+    best_sentence_detection_throughput = max((
+        r.get("stats", {}).get("sentence_detection_chars_per_sec", 0) or 
+        r.get("stats", {}).get("aggregate_throughput_chars_per_sec", 0)
+        for r in successful_results
+    ), default=0)
+    best_total_throughput = max((
+        r.get("stats", {}).get("overall_chars_per_sec", 0) or 
+        r.get("stats", {}).get("total_e2e_throughput_chars_per_sec", 0) or
+        r.get("stats", {}).get("aggregate_throughput_chars_per_sec", 0)
+        for r in successful_results
+    ), default=0)
 
     for result in successful_results:
         tool = result.get("tool")
         stats = result.get("stats")
         version = stats.get("version", "")
-        cores = system_info.get('cpu_count', 1) if tool == "seams" else 1
+        if tool == "seams":
+            cores = system_info.get('cpu_count', 1)
+        elif tool == "seams-single-cpu":
+            cores = 1
+        else:
+            cores = 1
         e2e_time = stats.get("benchmark_e2e_time_s", 0)
         speed_up = nupunkt_e2e_time / e2e_time if e2e_time > 0 else 0
         total_sentences = stats.get("total_sentences_detected") or stats.get("total_sentences", 0)
@@ -544,31 +600,25 @@ def main():
         else:
             tool_display = tool
             
-        # Apply bold formatting for seams
-        if tool == "seams":
+        # Bold the tool name if it has the best (fastest) e2e time
+        is_best_time = abs(e2e_time - best_time) < 0.01  # Allow small tolerance
+        if is_best_time:
             tool_display = f"**{tool_display}**"
-            
-        # Format cores
-        cores_str = f"**{cores}**" if tool == "seams" else str(cores)
         
-        # Format time
-        if tool == "seams":
-            if e2e_time < 60:
-                time_str = f"**{e2e_time:.0f} s**"
-            else:
-                minutes = int(e2e_time // 60)
-                seconds = int(e2e_time % 60)
-                time_str = f"**{minutes} m {seconds} s**"
+        # Format cores - no bold formatting needed
+        cores_str = str(cores)
+        
+        # Format time - bold if best (shortest)
+        if e2e_time < 60:
+            time_str = f"**{e2e_time:.0f} s**" if is_best_time else f"{e2e_time:.0f} s"
         else:
-            if e2e_time < 60:
-                time_str = f"{e2e_time:.0f} s"
-            else:
-                minutes = int(e2e_time // 60)
-                seconds = int(e2e_time % 60)
-                time_str = f"{minutes} m {seconds} s"
+            minutes = int(e2e_time // 60)
+            seconds = int(e2e_time % 60)
+            time_str = f"**{minutes} m {seconds} s**" if is_best_time else f"{minutes} m {seconds} s"
         
-        # Format speed-up
-        if tool == "seams":
+        # Format speed-up - bold if best (highest)
+        is_best_speed_up = abs(speed_up - best_speed_up) < 0.01
+        if is_best_speed_up:
             speed_up_str = f"**{speed_up:.0f} ×**"
         else:
             if speed_up < 1:
@@ -576,46 +626,45 @@ def main():
             else:
                 speed_up_str = f"{speed_up:.0f} ×"
         
-        # Format sentences per second
-        if tool == "seams":
-            sentences_per_sec_str = f"**{sentences_per_sec / 1000000:.1f} M**"
+        # Format sentences per second - bold if best (highest)
+        is_best_sentences_per_sec = abs(sentences_per_sec - best_sentences_per_sec) < 1000  # Allow tolerance
+        if sentences_per_sec >= 1000000:
+            sentences_per_sec_str = f"**{sentences_per_sec / 1000000:.1f} M**" if is_best_sentences_per_sec else f"{sentences_per_sec / 1000000:.1f} M"
+        elif sentences_per_sec >= 1000:
+            sentences_per_sec_str = f"**{sentences_per_sec / 1000:.0f} k**" if is_best_sentences_per_sec else f"{sentences_per_sec / 1000:.0f} k"
         else:
-            if sentences_per_sec >= 1000:
-                sentences_per_sec_str = f"{sentences_per_sec / 1000:.0f} k"
-            else:
-                sentences_per_sec_str = f"{sentences_per_sec:.0f}"
+            sentences_per_sec_str = f"**{sentences_per_sec:.0f}**" if is_best_sentences_per_sec else f"{sentences_per_sec:.0f}"
         
         # Get sentence detection throughput and total throughput
-        if tool == "seams":
+        if tool in ["seams", "seams-single-cpu"]:
             sentence_detection_throughput = stats.get("sentence_detection_chars_per_sec", 0)
             total_throughput = stats.get("overall_chars_per_sec", 0)
-            
-            # Format sentence detection throughput
-            if sentence_detection_throughput > 0:
-                sentence_detection_str = f"**{sentence_detection_throughput / 1000000:.1f} MB/s**"
-            else:
-                sentence_detection_str = "**N/A**"
-            
-            # Format total throughput
-            total_throughput_str = f"**{total_throughput / 1000000:.1f} MB/s**"
         else:
             # For Python tools, get both throughputs
             sentence_detection_throughput = stats.get("aggregate_throughput_chars_per_sec", 0)
             total_throughput = stats.get("total_e2e_throughput_chars_per_sec", sentence_detection_throughput)
-            
-            # Format throughputs
-            if sentence_detection_throughput > 0:
-                sentence_detection_str = f"{sentence_detection_throughput / 1000000:.1f} MB/s"
-            else:
-                sentence_detection_str = "N/A"
-                
-            if total_throughput > 0:
-                total_throughput_str = f"{total_throughput / 1000000:.1f} MB/s"
-            else:
-                total_throughput_str = "N/A"
+        
+        # Format sentence detection throughput - bold if best
+        is_best_sentence_detection = abs(sentence_detection_throughput - best_sentence_detection_throughput) < 1000000
+        if sentence_detection_throughput > 0:
+            sentence_detection_str = f"**{sentence_detection_throughput / 1000000:.1f} MB/s**" if is_best_sentence_detection else f"{sentence_detection_throughput / 1000000:.1f} MB/s"
+        else:
+            sentence_detection_str = "N/A"
+        
+        # Format total throughput - bold if best
+        is_best_total = abs(total_throughput - best_total_throughput) < 1000000
+        if total_throughput > 0:
+            total_throughput_str = f"**{total_throughput / 1000000:.1f} MB/s**" if is_best_total else f"{total_throughput / 1000000:.1f} MB/s"
+        else:
+            total_throughput_str = "N/A"
         
         # Set note
-        note = "line offsets included" if tool == "seams" else "pure-Python"
+        if tool == "seams":
+            note = "line offsets included"
+        elif tool == "seams-single-cpu":
+            note = "single-CPU baseline"
+        else:
+            note = "pure-Python"
 
         print(f"| {tool_display} | {cores_str} | {time_str} | {speed_up_str} | {sentences_per_sec_str} | {sentence_detection_str} | {total_throughput_str} | {note} |")
     

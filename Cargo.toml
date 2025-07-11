@@ -2,6 +2,14 @@
 name = "seams"
 version = "0.1.0"
 edition = "2021"
+description = "High-throughput sentence extractor for Project Gutenberg texts with dialog-aware detection"
+license = "MIT"
+repository = "https://github.com/knowseams/knowseams"
+homepage = "https://github.com/knowseams/knowseams"
+readme = "README.md"
+keywords = ["gutenberg", "sentence", "nlp", "text-processing", "cli"]
+categories = ["command-line-utilities", "text-processing"]
+authors = ["stevejs"]
 
 [[bin]]
 name = "seams"

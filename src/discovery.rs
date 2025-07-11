@@ -15,6 +15,8 @@ use ignore::{WalkBuilder, WalkState};
 pub struct DiscoveryConfig {
     /// Whether to fail fast on first error or continue processing
     pub fail_fast: bool,
+    /// Maximum number of threads to use for discovery (None = use default)
+    pub max_threads: Option<usize>,
 }
 
 
@@ -69,8 +71,13 @@ pub fn discover_files_parallel(
         
         // WHY: Use ignore::WalkBuilder (from ripgrep) for optimized deep directory traversal
         // Stream files as they're discovered for true overlapped processing
+        let thread_count = if let Some(max_threads) = config.max_threads {
+            max_threads.max(1) // Ensure at least 1 thread
+        } else {
+            (num_cpus::get() / 2).max(1) // Use no more than half of available CPU cores
+        };
         let walker = WalkBuilder::new(&root_path)
-            .threads((num_cpus::get() / 2).max(1)) // Use no more than half of available CPU cores
+            .threads(thread_count)
             .follow_links(false) // Don't follow symlinks
             .hidden(false) // Don't skip hidden files/dirs (some Gutenberg files might be in hidden dirs)
             .ignore(false) // Don't read .gitignore files
@@ -439,7 +446,7 @@ mod tests {
     #[tokio::test]
     async fn test_fail_fast_behavior() {
         let temp_dir = TempDir::new().unwrap();
-        let config = DiscoveryConfig { fail_fast: true };
+        let config = DiscoveryConfig { fail_fast: true, max_threads: None };
         
         // Create a file that will be discovered successfully
         let _file_path = create_test_file(temp_dir.path(), "valid-0.txt", "content").await.unwrap();

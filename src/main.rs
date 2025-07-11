@@ -60,6 +60,7 @@ async fn process_with_overlapped_pipeline(
     // Always perform fresh discovery - parallel discovery is fast enough
     let discovery_config = discovery::DiscoveryConfig {
         fail_fast: args.fail_fast,
+        max_threads: args.max_cpus,
     };
     
     // Perform overlapped discovery and processing
@@ -75,8 +76,11 @@ async fn process_with_overlapped_pipeline(
     let mut processing_results = Vec::new();
     
     // WHY: Use bounded concurrency to prevent resource exhaustion
-    //let max_concurrent = (num_cpus::get() / 2).max(1); // Alternative: Use half of available CPU cores
-    let max_concurrent = (num_cpus::get().saturating_sub(1)).max(1); // Leave one core free for system tasks
+    let max_concurrent = if let Some(max_cpus) = args.max_cpus {
+        max_cpus.max(1) // Ensure at least 1 CPU
+    } else {
+        (num_cpus::get().saturating_sub(1)).max(1) // Leave one core free for system tasks
+    };
     let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
     let detector = Arc::new(
         crate::sentence_detector::dialog_detector::SentenceDetectorDialog::new()
@@ -565,6 +569,8 @@ COMMON WORKFLOWS:
 PERFORMANCE & DEBUGGING:
   seams ./texts --stats-out benchmark.json     # Save detailed performance metrics
   seams ./texts --clear-restart-log            # Clear resume state, reprocess everything
+  seams ./texts --max-cpus 1                   # Single-CPU benchmarking for baselines
+  seams ./texts --max-cpus 4                   # Limit to 4 CPU cores
 
 EXPECTED BEHAVIOR:
   • Finds files matching *-0.txt pattern recursively
@@ -607,6 +613,10 @@ struct Args {
     /// Clear the restart log before processing
     #[arg(long, help = "Clear the restart log and reprocess all files")]
     clear_restart_log: bool,
+    
+    /// Maximum number of CPUs/threads to use for processing
+    #[arg(long, help = "Limit processing to specified number of CPUs/threads (default: use all available)")]
+    max_cpus: Option<usize>,
 }
 
 #[tokio::main]
