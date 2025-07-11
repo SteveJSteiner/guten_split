@@ -189,6 +189,7 @@ pub struct DialogDetectedSentence {
 #[derive(Debug, Clone)]
 pub enum MatchType {
     NarrativeGestureBoundary,
+    NarrativeToDialog,  // New: N→D transition that creates sentence boundary AND enters dialog
     DialogOpen,
     DialogEnd,
     DialogSoftEnd,
@@ -290,20 +291,62 @@ impl DialogStateMachine {
         
         // Compositional pattern components
         let sentence_end_punct = r"[.!?]";
-        //let soft_separator = r"[ \t]+|[?:\r\n|\n]";  // spaces and tabs, or a single newline
         let soft_separator = r"[ \t]+";  // Only spaces/tabs within same line  
         let line_boundary = r"(?:\r?\n)";  // single newline for line-end patterns
         let hard_separator = r"(?:\r\n\r\n|\n\n)";   // double newline (Windows or Unix)
-        let sentence_start_chars = r"[A-Z\x22\x27\u{201C}\u{2018}\(\[\{]";
-        let not_sentence_start_chars = Self::negate_char_class(sentence_start_chars);
-        let dialog_prefix_whitespace = r"[ \t\n]";  // Space, tab, or newline (no \r needed - Windows \r\n has \n)
-        let dialog_open_chars = r"[\x22\x27\u{201C}\u{2018}\(\[\{]";  // All dialog opening characters
-        let dialog_start = format!("{dialog_prefix_whitespace}{dialog_open_chars}");
         
-        // Composed patterns with visible logic
-        let narrative_soft_boundary = format!("{sentence_end_punct}({soft_separator}){sentence_start_chars}");
-        let narrative_hard_boundary = format!(r"{sentence_end_punct}\s*{hard_separator}\s*{sentence_start_chars}");
-        let narrative_line_boundary = format!("{sentence_end_punct}{line_boundary}{sentence_start_chars}");  // sentence end + single newline + sentence start
+        // SOLUTION: Split sentence start chars to prevent overlaps
+        let non_dialog_sentence_start_chars = r"[A-Z]";  // Only capital letters for narrative boundaries
+        let dialog_open_chars = r"[\x22\x27\u{201C}\u{2018}\(\[\{]";  // All dialog opening characters
+        
+        let dialog_prefix_whitespace = r"[ \t\n]";  // Space, tab, or newline
+        
+        // NEW APPROACH: Explicit patterns for each dialog character type
+        // Distinguish between sentence-ending and non-sentence-ending punctuation
+        let sentence_ending_punct = r"[.!?]";  // These create sentence boundaries
+        let non_sentence_ending_punct = r"[,:;]";  // These do NOT create sentence boundaries
+        
+        // Individual dialog characters
+        let double_quote_char = r"\x22";         // "
+        let single_quote_char = r"\x27";         // '
+        let smart_double_open = r"\u{201C}";     // “
+        let smart_single_open = r"\u{2018}";     // ‘
+        let round_paren_open = r"\(";            // (
+        let square_bracket_open = r"\[";         // [
+        let curly_brace_open = r"\{";            // {
+        
+        // N→N narrative sentence boundaries
+        let narrative_sentence_boundary = format!("{sentence_ending_punct}({soft_separator}){non_dialog_sentence_start_chars}");
+        let narrative_line_boundary = format!("{sentence_ending_punct}{line_boundary}{non_dialog_sentence_start_chars}");
+        let narrative_hard_boundary = format!(r"{sentence_ending_punct}\s*{hard_separator}\s*{non_dialog_sentence_start_chars}");
+        
+        // N→D transitions WITH sentence boundary (sentence punct + space + specific dialog char)
+        let narrative_to_double_quote_boundary = format!("{sentence_ending_punct}({soft_separator}){double_quote_char}");
+        let narrative_to_single_quote_boundary = format!("{sentence_ending_punct}({soft_separator}){single_quote_char}");
+        let narrative_to_smart_double_boundary = format!("{sentence_ending_punct}({soft_separator}){smart_double_open}");
+        let narrative_to_smart_single_boundary = format!("{sentence_ending_punct}({soft_separator}){smart_single_open}");
+        let narrative_to_round_paren_boundary = format!("{sentence_ending_punct}({soft_separator}){round_paren_open}");
+        let narrative_to_square_bracket_boundary = format!("{sentence_ending_punct}({soft_separator}){square_bracket_open}");
+        let narrative_to_curly_brace_boundary = format!("{sentence_ending_punct}({soft_separator}){curly_brace_open}");
+        
+        // N→D transitions WITHOUT sentence boundary (non-sentence punct + space + specific dialog char)
+        let narrative_to_double_quote_no_boundary = format!("{non_sentence_ending_punct}({soft_separator}){double_quote_char}");
+        let narrative_to_single_quote_no_boundary = format!("{non_sentence_ending_punct}({soft_separator}){single_quote_char}");
+        let narrative_to_smart_double_no_boundary = format!("{non_sentence_ending_punct}({soft_separator}){smart_double_open}");
+        let narrative_to_smart_single_no_boundary = format!("{non_sentence_ending_punct}({soft_separator}){smart_single_open}");
+        let narrative_to_round_paren_no_boundary = format!("{non_sentence_ending_punct}({soft_separator}){round_paren_open}");
+        let narrative_to_square_bracket_no_boundary = format!("{non_sentence_ending_punct}({soft_separator}){square_bracket_open}");
+        let narrative_to_curly_brace_no_boundary = format!("{non_sentence_ending_punct}({soft_separator}){curly_brace_open}");
+        
+        // Independent dialog starts (whitespace + dialog char, not after punctuation)
+        let double_quote_independent = format!("{dialog_prefix_whitespace}{double_quote_char}");
+        let single_quote_independent = format!("{dialog_prefix_whitespace}{single_quote_char}");
+        let smart_double_independent = format!("{dialog_prefix_whitespace}{smart_double_open}");
+        let smart_single_independent = format!("{dialog_prefix_whitespace}{smart_single_open}");
+        let round_paren_independent = format!("{dialog_prefix_whitespace}{round_paren_open}");
+        let square_bracket_independent = format!("{dialog_prefix_whitespace}{square_bracket_open}");
+        let curly_brace_independent = format!("{dialog_prefix_whitespace}{curly_brace_open}");
+        
         let pure_hard_sep = hard_separator.to_string();
         
         
@@ -318,23 +361,81 @@ impl DialogStateMachine {
         
         
         // Dialog ending patterns: HARD_END (sentence boundary) vs SOFT_END (continue sentence)
-        let dialog_hard_double_end = format!("{sentence_end_punct}{double_quote_close}({soft_separator}){sentence_start_chars}");
-        let dialog_soft_double_end = format!("{sentence_end_punct}{double_quote_close}({soft_separator}){not_sentence_start_chars}");
+        // Use same approach - separate dialog and non-dialog sentence starts
+        let all_sentence_start_chars = format!("{non_dialog_sentence_start_chars}|{dialog_open_chars}");
+        let not_all_sentence_start_chars = Self::negate_char_class(&all_sentence_start_chars);
         
-        // NARRATIVE STATE - Multi-pattern with priority
+        let dialog_hard_double_end = format!("{sentence_end_punct}{double_quote_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
+        let dialog_soft_double_end = format!("{sentence_end_punct}{double_quote_close}({soft_separator}){not_all_sentence_start_chars}");
+        
+        // NARRATIVE STATE - Mutually exclusive patterns
         let narrative_patterns = vec![
-            dialog_start.as_str(),                    // PatternID 0 = dialog open (with required whitespace)
-            narrative_line_boundary.as_str(),         // PatternID 1 = sentence boundary (line break)
-            narrative_soft_boundary.as_str(),         // PatternID 2 = sentence boundary (space/tab)
-            narrative_hard_boundary.as_str(),         // PatternID 3 = sentence boundary (hard sep)
-            pure_hard_sep.as_str(),                   // PatternID 4 = paragraph break
+            // N→D with sentence boundary (highest priority - create sentence break)
+            narrative_to_double_quote_boundary.as_str(),       // PatternID 0
+            narrative_to_single_quote_boundary.as_str(),       // PatternID 1
+            narrative_to_smart_double_boundary.as_str(),       // PatternID 2
+            narrative_to_smart_single_boundary.as_str(),       // PatternID 3
+            narrative_to_round_paren_boundary.as_str(),        // PatternID 4
+            narrative_to_square_bracket_boundary.as_str(),     // PatternID 5
+            narrative_to_curly_brace_boundary.as_str(),        // PatternID 6
+            
+            // N→D without sentence boundary (continue current sentence)
+            narrative_to_double_quote_no_boundary.as_str(),    // PatternID 7
+            narrative_to_single_quote_no_boundary.as_str(),    // PatternID 8
+            narrative_to_smart_double_no_boundary.as_str(),    // PatternID 9
+            narrative_to_smart_single_no_boundary.as_str(),    // PatternID 10
+            narrative_to_round_paren_no_boundary.as_str(),     // PatternID 11
+            narrative_to_square_bracket_no_boundary.as_str(),  // PatternID 12
+            narrative_to_curly_brace_no_boundary.as_str(),     // PatternID 13
+            
+            // Independent dialog starts
+            double_quote_independent.as_str(),                 // PatternID 14
+            single_quote_independent.as_str(),                 // PatternID 15
+            smart_double_independent.as_str(),                 // PatternID 16
+            smart_single_independent.as_str(),                 // PatternID 17
+            round_paren_independent.as_str(),                  // PatternID 18
+            square_bracket_independent.as_str(),               // PatternID 19
+            curly_brace_independent.as_str(),                  // PatternID 20
+            
+            // N→N narrative boundaries
+            narrative_line_boundary.as_str(),                  // PatternID 21
+            narrative_sentence_boundary.as_str(),              // PatternID 22
+            narrative_hard_boundary.as_str(),                  // PatternID 23
+            pure_hard_sep.as_str(),                           // PatternID 24
         ];
         let narrative_mappings = vec![
-            (MatchType::DialogOpen, DialogState::Narrative), // State determined by context
-            (MatchType::NarrativeGestureBoundary, DialogState::Narrative),
-            (MatchType::NarrativeGestureBoundary, DialogState::Narrative),
-            (MatchType::NarrativeGestureBoundary, DialogState::Narrative),
-            (MatchType::HardSeparator, DialogState::Unknown),
+            // N→D with sentence boundary (create sentence break + enter dialog)
+            (MatchType::NarrativeToDialog, DialogState::DialogDoubleQuote),        // PatternID 0
+            (MatchType::NarrativeToDialog, DialogState::DialogSingleQuote),        // PatternID 1
+            (MatchType::NarrativeToDialog, DialogState::DialogSmartDoubleOpen),    // PatternID 2
+            (MatchType::NarrativeToDialog, DialogState::DialogSmartSingleOpen),    // PatternID 3
+            (MatchType::NarrativeToDialog, DialogState::DialogParenthheticalRound), // PatternID 4
+            (MatchType::NarrativeToDialog, DialogState::DialogParenthheticalSquare), // PatternID 5
+            (MatchType::NarrativeToDialog, DialogState::DialogParenthheticalCurly), // PatternID 6
+            
+            // N→D without sentence boundary (continue sentence + enter dialog)
+            (MatchType::DialogOpen, DialogState::DialogDoubleQuote),              // PatternID 7
+            (MatchType::DialogOpen, DialogState::DialogSingleQuote),              // PatternID 8
+            (MatchType::DialogOpen, DialogState::DialogSmartDoubleOpen),          // PatternID 9
+            (MatchType::DialogOpen, DialogState::DialogSmartSingleOpen),          // PatternID 10
+            (MatchType::DialogOpen, DialogState::DialogParenthheticalRound),      // PatternID 11
+            (MatchType::DialogOpen, DialogState::DialogParenthheticalSquare),     // PatternID 12
+            (MatchType::DialogOpen, DialogState::DialogParenthheticalCurly),      // PatternID 13
+            
+            // Independent dialog starts (enter dialog)
+            (MatchType::DialogOpen, DialogState::DialogDoubleQuote),              // PatternID 14
+            (MatchType::DialogOpen, DialogState::DialogSingleQuote),              // PatternID 15
+            (MatchType::DialogOpen, DialogState::DialogSmartDoubleOpen),          // PatternID 16
+            (MatchType::DialogOpen, DialogState::DialogSmartSingleOpen),          // PatternID 17
+            (MatchType::DialogOpen, DialogState::DialogParenthheticalRound),      // PatternID 18
+            (MatchType::DialogOpen, DialogState::DialogParenthheticalSquare),     // PatternID 19
+            (MatchType::DialogOpen, DialogState::DialogParenthheticalCurly),      // PatternID 20
+            
+            // N→N narrative boundaries (stay in narrative)
+            (MatchType::NarrativeGestureBoundary, DialogState::Narrative),        // PatternID 21
+            (MatchType::NarrativeGestureBoundary, DialogState::Narrative),        // PatternID 22
+            (MatchType::NarrativeGestureBoundary, DialogState::Narrative),        // PatternID 23
+            (MatchType::HardSeparator, DialogState::Unknown),                     // PatternID 24
         ];
         state_patterns.insert(DialogState::Narrative, Regex::new_many(&narrative_patterns)?);
         state_pattern_mappings.insert(DialogState::Narrative, narrative_mappings);
@@ -354,8 +455,8 @@ impl DialogStateMachine {
         state_pattern_mappings.insert(DialogState::DialogDoubleQuote, dialog_double_mappings);
         
         // DIALOG SINGLE QUOTE STATE - Similar structure
-        let dialog_hard_single_end = format!("{sentence_end_punct}{single_quote_close}({soft_separator}){sentence_start_chars}");
-        let dialog_soft_single_end = format!("{sentence_end_punct}{single_quote_close}({soft_separator}){not_sentence_start_chars}");
+        let dialog_hard_single_end = format!("{sentence_end_punct}{single_quote_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
+        let dialog_soft_single_end = format!("{sentence_end_punct}{single_quote_close}({soft_separator}){not_all_sentence_start_chars}");
         
         let dialog_single_patterns = vec![
             pure_hard_sep.as_str(),                  // PatternID 0 = paragraph break (HIGHEST PRIORITY)
@@ -371,8 +472,8 @@ impl DialogStateMachine {
         state_pattern_mappings.insert(DialogState::DialogSingleQuote, dialog_single_mappings);
         
         // DIALOG SMART DOUBLE QUOTE STATE  
-        let dialog_hard_smart_double_end = format!("{sentence_end_punct}{smart_double_close}({soft_separator}){sentence_start_chars}");
-        let dialog_soft_smart_double_end = format!("{sentence_end_punct}{smart_double_close}({soft_separator}){not_sentence_start_chars}");
+        let dialog_hard_smart_double_end = format!("{sentence_end_punct}{smart_double_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
+        let dialog_soft_smart_double_end = format!("{sentence_end_punct}{smart_double_close}({soft_separator}){not_all_sentence_start_chars}");
         
         let dialog_smart_double_patterns = vec![
             pure_hard_sep.as_str(),
@@ -388,8 +489,8 @@ impl DialogStateMachine {
         state_pattern_mappings.insert(DialogState::DialogSmartDoubleOpen, dialog_smart_double_mappings);
         
         // DIALOG SMART SINGLE QUOTE STATE
-        let dialog_hard_smart_single_end = format!("{sentence_end_punct}{smart_single_close}({soft_separator}){sentence_start_chars}");
-        let dialog_soft_smart_single_end = format!("{sentence_end_punct}{smart_single_close}({soft_separator}){not_sentence_start_chars}");
+        let dialog_hard_smart_single_end = format!("{sentence_end_punct}{smart_single_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
+        let dialog_soft_smart_single_end = format!("{sentence_end_punct}{smart_single_close}({soft_separator}){not_all_sentence_start_chars}");
         
         let dialog_smart_single_patterns = vec![
             pure_hard_sep.as_str(),
@@ -405,8 +506,8 @@ impl DialogStateMachine {
         state_pattern_mappings.insert(DialogState::DialogSmartSingleOpen, dialog_smart_single_mappings);
         
         // DIALOG PARENTHETICAL ROUND STATE
-        let dialog_hard_paren_round_end = format!("{sentence_end_punct}{round_paren_close}({soft_separator}){sentence_start_chars}");
-        let dialog_soft_paren_round_end = format!("{sentence_end_punct}{round_paren_close}({soft_separator}){not_sentence_start_chars}");
+        let dialog_hard_paren_round_end = format!("{sentence_end_punct}{round_paren_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
+        let dialog_soft_paren_round_end = format!("{sentence_end_punct}{round_paren_close}({soft_separator}){not_all_sentence_start_chars}");
         
         let dialog_paren_round_patterns = vec![
             pure_hard_sep.as_str(),
@@ -422,8 +523,8 @@ impl DialogStateMachine {
         state_pattern_mappings.insert(DialogState::DialogParenthheticalRound, dialog_paren_round_mappings);
         
         // DIALOG PARENTHETICAL SQUARE STATE
-        let dialog_hard_paren_square_end = format!("{sentence_end_punct}{square_bracket_close}({soft_separator}){sentence_start_chars}");
-        let dialog_soft_paren_square_end = format!("{sentence_end_punct}{square_bracket_close}({soft_separator}){not_sentence_start_chars}");
+        let dialog_hard_paren_square_end = format!("{sentence_end_punct}{square_bracket_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
+        let dialog_soft_paren_square_end = format!("{sentence_end_punct}{square_bracket_close}({soft_separator}){not_all_sentence_start_chars}");
         
         let dialog_paren_square_patterns = vec![
             pure_hard_sep.as_str(),
@@ -439,8 +540,8 @@ impl DialogStateMachine {
         state_pattern_mappings.insert(DialogState::DialogParenthheticalSquare, dialog_paren_square_mappings);
         
         // DIALOG PARENTHETICAL CURLY STATE
-        let dialog_hard_paren_curly_end = format!("{sentence_end_punct}{curly_brace_close}({soft_separator}){sentence_start_chars}");
-        let dialog_soft_paren_curly_end = format!("{sentence_end_punct}{curly_brace_close}({soft_separator}){not_sentence_start_chars}");
+        let dialog_hard_paren_curly_end = format!("{sentence_end_punct}{curly_brace_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
+        let dialog_soft_paren_curly_end = format!("{sentence_end_punct}{curly_brace_close}({soft_separator}){not_all_sentence_start_chars}");
         
         let dialog_paren_curly_patterns = vec![
             pure_hard_sep.as_str(),
@@ -462,26 +563,6 @@ impl DialogStateMachine {
         })
     }
     
-    /// Determine specific dialog state from matched opening character
-    fn determine_dialog_state_from_match(&self, matched_text: &str) -> DialogState {
-        if matched_text.contains('"') {
-            DialogState::DialogDoubleQuote
-        } else if matched_text.contains('\'') {
-            DialogState::DialogSingleQuote
-        } else if matched_text.contains('\u{201C}') {
-            DialogState::DialogSmartDoubleOpen
-        } else if matched_text.contains('\u{2018}') {
-            DialogState::DialogSmartSingleOpen
-        } else if matched_text.contains('(') {
-            DialogState::DialogParenthheticalRound
-        } else if matched_text.contains('[') {
-            DialogState::DialogParenthheticalSquare
-        } else if matched_text.contains('{') {
-            DialogState::DialogParenthheticalCurly
-        } else {
-            DialogState::Narrative
-        }
-    }
     
     pub fn detect_sentences(&self, text: &str) -> Result<Vec<DialogDetectedSentence>> {
         debug!("Starting dialog state machine detection on {} characters", text.len());
@@ -523,15 +604,7 @@ impl DialogStateMachine {
                 // Get PatternID and map directly to (MatchType, DialogState) using state-specific mappings
                 let pattern_id = mat.pattern().as_usize();
                 let (match_type, next_state) = if pattern_id < pattern_mappings.len() {
-                    let base_mapping = &pattern_mappings[pattern_id];
-                    
-                    // Special handling for dialog open - determine specific dialog state
-                    if matches!(base_mapping.0, MatchType::DialogOpen) {
-                        let dialog_state = self.determine_dialog_state_from_match(matched_text);
-                        (base_mapping.0.clone(), dialog_state)
-                    } else {
-                        base_mapping.clone()
-                    }
+                    pattern_mappings[pattern_id].clone()
                 } else {
                     // Fallback for invalid pattern ID
                     (MatchType::NarrativeGestureBoundary, DialogState::Narrative)
@@ -551,6 +624,45 @@ impl DialogStateMachine {
                 };
                 
                 match match_type {
+                    MatchType::NarrativeToDialog => {
+                        // N→D transition: creates sentence boundary AND transitions to dialog state
+                        let sentence_end_byte = self.find_sent_sep_start(matched_text)
+                            .map(|sep_offset| match_start_byte.advance(sep_offset))
+                            .unwrap_or(match_start_byte);
+                        
+                        if sentence_end_byte.0 > sentence_start_byte.0 {
+                            let content = text[sentence_start_byte.0..sentence_end_byte.0].trim().to_string();
+                            if !content.is_empty() {
+                                // WHY: Check for abbreviation false positives before creating sentence boundary
+                                if self.abbreviation_checker.ends_with_title_abbreviation(&content) {
+                                    // This is a false positive - don't create sentence boundary
+                                    // Continue processing from current position without advancing sentence_start_byte
+                                } else {
+                                    // Use incremental position tracker instead of O(N) conversions
+                                    let (__start_char, start_line, start_col) = position_tracker.advance_to_byte(sentence_start_byte)
+                                        .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
+                                    let (__end_char, end_line, end_col) = position_tracker.advance_to_byte(sentence_end_byte)
+                                        .map_err(|e| anyhow::anyhow!("Position tracking error: {}", e))?;
+                                    
+                                    sentences.push(DialogDetectedSentence {
+                                        start_byte: sentence_start_byte,
+                                        end_byte: sentence_end_byte,
+                                        start_line,
+                                        start_col,
+                                        end_line,
+                                        end_col,
+                                    });
+                                    
+                                    // Next sentence starts after the separator
+                                    let next_sentence_start_byte = self.find_sent_sep_end(matched_text)
+                                        .map(|sep_end_offset| match_start_byte.advance(sep_end_offset))
+                                        .unwrap_or(match_end_byte);
+                                    
+                                    sentence_start_byte = next_sentence_start_byte;
+                                }
+                            }
+                        }
+                    }
                     MatchType::NarrativeGestureBoundary => {
                         // This creates a sentence boundary - record the sentence
                         let sentence_end_byte = self.find_sent_sep_start(matched_text)
@@ -1153,6 +1265,36 @@ she had been tasting in a corner with evident satisfaction."#;
         assert!(sentences[0].raw_content.contains("no!"));
         assert!(sentences[0].raw_content.contains("interposed"));
         assert!(sentences[0].raw_content.contains("satisfaction"));
+    }
+
+    #[test]
+    fn test_narrative_dialog_separation_expected_fail() {
+        let detector = get_detector();
+        
+        // This test is expected to fail - demonstrates current limitation
+        let text = r#"Then he struggled up and looked round him, somewhat confused, for a second or two.  "Hallo!  Is it all over?""#;
+        
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        // Expected: 2 sentences (narrative + dialog should be separate)
+        // Current implementation may fail this expectation
+        let expected_sentences = vec![
+            "Then he struggled up and looked round him, somewhat confused, for a second or two.",
+            "\"Hallo!  Is it all over?\""
+        ];
+        
+        assert_eq!(sentences.len(), expected_sentences.len(),
+            "Expected {} sentences, got {}\nExpected: {:?}\nActual: {:?}",
+            expected_sentences.len(),
+            sentences.len(),
+            expected_sentences,
+            sentences.iter().map(|s| s.raw_content.trim()).collect::<Vec<_>>());
+        
+        for (i, (actual, expected)) in sentences.iter().zip(expected_sentences.iter()).enumerate() {
+            assert_eq!(actual.raw_content.trim(), *expected,
+                "Sentence {} mismatch:\nExpected: '{}'\nActual: '{}'", 
+                i + 1, expected, actual.raw_content.trim());
+        }
     }
 
     #[test]
