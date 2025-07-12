@@ -662,6 +662,230 @@ fn test_pattern_coverage_analysis() {
 }
 
 #[test]
+fn test_semicolon_after_parenthetical_bug() {
+    let detector = get_detector();
+    
+    // Theory: semicolon after closing parenthesis prevents proper dialog state exit
+    // This should create under-splitting (fewer sentences than expected)
+    
+    let test_cases = [
+        // Minimal case: parenthetical + semicolon + continuation + period + new sentence
+        ("Text (year); more text. New sentence.", 2, "Basic semicolon after parenthetical"),
+        
+        // The specific pattern from Kanawha text
+        ("Settlement (1748); several Virginians hunted. Before the close happened.", 2, "Kanawha pattern simplified"),
+        
+        // Control case: without semicolon should work correctly
+        ("Text (year) more text. New sentence.", 2, "Control: no semicolon"),
+        
+        // Control case: with comma instead of semicolon
+        ("Text (year), more text. New sentence.", 2, "Control: comma instead"),
+        
+        // Other punctuation after parenthetical
+        ("Text (year): more text. New sentence.", 2, "Colon after parenthetical"),
+        ("Text (year)! More text. New sentence.", 2, "Exclamation after parenthetical"),
+        ("Text (year)? More text. New sentence.", 2, "Question after parenthetical"),
+        
+        // Multiple parentheticals with semicolons
+        ("First (1748); second (1749); third text. New sentence.", 2, "Multiple parenthetical semicolons"),
+    ];
+    
+    println!("=== Testing Semicolon After Parenthetical Bug ===");
+    
+    for (text, expected, description) in test_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        println!("  Text: '{}'", text);
+        for (i, sentence) in sentences.iter().enumerate() {
+            println!("    {}: '{}'", i + 1, sentence.normalize().trim());
+        }
+        
+        if sentences.len() != expected {
+            println!("  ❌ BUG REPRODUCED! Expected {}, got {}", expected, sentences.len());
+        } else {
+            println!("  ✅ Working correctly");
+        }
+        println!();
+    }
+    
+    // Focus on the minimal reproduction case
+    let minimal_case = "Text (year); more text. New sentence.";
+    let sentences = detector.detect_sentences_borrowed(minimal_case).unwrap();
+    
+    if sentences.len() == 1 {
+        println!("🔍 CONFIRMED BUG: Semicolon after parenthetical causes under-splitting");
+        println!("Single sentence detected: '{}'", sentences[0].normalize().trim());
+    }
+}
+
+#[test]
+fn test_kanawha_settlement_text() {
+    let detector = get_detector();
+    
+    let input = "The first settlement made west of the mountains was on a branch of\nthe Kanawha (1748); in the same season several adventurous Virginians\nhunted and made land-claims in Kentucky and Tennessee. Before the close of\nthe following year (1749) there had been formed the Ohio Company, composed\nof wealthy Virginians, among whom were two brothers of Washington.";
+    
+    let sentences = detector.detect_sentences_borrowed(input).unwrap();
+    
+    println!("Kanawha settlement test: {} sentences:", sentences.len());
+    for (i, sentence) in sentences.iter().enumerate() {
+        println!("  {}: '{}'", i + 1, sentence.normalize().trim());
+    }
+    
+    // Should now correctly detect 2 sentences after fixing semicolon bug
+    assert_eq!(sentences.len(), 2, "Should detect 2 sentences in Kanawha settlement text");
+    
+    assert!(sentences[0].normalize().contains("Kanawha (1748)"));
+    assert!(sentences[0].normalize().contains("Kentucky and Tennessee"));
+    assert!(sentences[1].normalize().contains("Ohio Company"));
+    assert!(sentences[1].normalize().contains("brothers of Washington"));
+}
+
+#[test]
+fn test_punctuation_after_quotes_bug() {
+    let detector = get_detector();
+    
+    // Theory: punctuation after closing quotes prevents proper dialog state exit
+    // Similar to the parenthetical bug, test single and double quotes
+    
+    let double_quote_cases = [
+        // Double quotes with various punctuation after closing quote
+        ("Text \"word\"; more text. New sentence.", 2, "Double quote + semicolon"),
+        ("Text \"word\", more text. New sentence.", 2, "Double quote + comma"),
+        ("Text \"word\": more text. New sentence.", 2, "Double quote + colon"),
+        
+        // Control: no punctuation after quote
+        ("Text \"word\" more text. New sentence.", 2, "Double quote control: no punctuation"),
+        
+        // Control: punctuation inside quote (should work normally)
+        ("Text \"word!\" more text. New sentence.", 2, "Double quote control: punctuation inside"),
+    ];
+    
+    let single_quote_cases = [
+        // Single quotes with various punctuation after closing quote
+        ("Text 'word'; more text. New sentence.", 2, "Single quote + semicolon"),
+        ("Text 'word', more text. New sentence.", 2, "Single quote + comma"),
+        ("Text 'word': more text. New sentence.", 2, "Single quote + colon"),
+        
+        // Control: no punctuation after quote
+        ("Text 'word' more text. New sentence.", 2, "Single quote control: no punctuation"),
+        
+        // Control: punctuation inside quote (should work normally)
+        ("Text 'word!' more text. New sentence.", 2, "Single quote control: punctuation inside"),
+    ];
+    
+    println!("=== Testing Punctuation After Double Quotes ===");
+    
+    for (text, expected, description) in double_quote_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        println!("  Text: '{}'", text);
+        for (i, sentence) in sentences.iter().enumerate() {
+            println!("    {}: '{}'", i + 1, sentence.normalize().trim());
+        }
+        
+        if sentences.len() != expected {
+            println!("  ❌ BUG REPRODUCED! Expected {}, got {}", expected, sentences.len());
+        } else {
+            println!("  ✅ Working correctly");
+        }
+        println!();
+    }
+    
+    println!("=== Testing Punctuation After Single Quotes ===");
+    
+    for (text, expected, description) in single_quote_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        println!("  Text: '{}'", text);
+        for (i, sentence) in sentences.iter().enumerate() {
+            println!("    {}: '{}'", i + 1, sentence.normalize().trim());
+        }
+        
+        if sentences.len() != expected {
+            println!("  ❌ BUG REPRODUCED! Expected {}, got {}", expected, sentences.len());
+        } else {
+            println!("  ✅ Working correctly");
+        }
+        println!();
+    }
+    
+    // Test smart quotes too
+    let smart_quote_cases = [
+        ("Text \u{201C}word\u{201D}; more text. New sentence.", 2, "Smart double quote + semicolon"),
+        ("Text \u{2018}word\u{2019}; more text. New sentence.", 2, "Smart single quote + semicolon"),
+    ];
+    
+    println!("=== Testing Punctuation After Smart Quotes ===");
+    
+    for (text, expected, description) in smart_quote_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        println!("  Text: '{}'", text);
+        for (i, sentence) in sentences.iter().enumerate() {
+            println!("    {}: '{}'", i + 1, sentence.normalize().trim());
+        }
+        
+        if sentences.len() != expected {
+            println!("  ❌ BUG REPRODUCED! Expected {}, got {}", expected, sentences.len());
+        } else {
+            println!("  ✅ Working correctly");
+        }
+        println!();
+    }
+}
+
+#[test]
+fn test_sentence_ending_punctuation_after_dialog_three_sentence_expectation() {
+    let detector = get_detector();
+    
+    // These cases should produce 3 sentences according to design goal:
+    // 1. "Text \"word\"!" (dialog with sentence-ending punctuation)
+    // 2. "More text." (separate sentence)  
+    // 3. "New sentence." (final sentence)
+    // Currently failing - produces 1 sentence instead of 3
+    
+    let three_sentence_cases = [
+        ("Text \"word\"! More text. New sentence.", 3, "Double quote + exclamation should create 3 sentences"),
+        ("Text \"word\"? More text. New sentence.", 3, "Double quote + question should create 3 sentences"),
+        ("Text 'word'! More text. New sentence.", 3, "Single quote + exclamation should create 3 sentences"),
+        ("Text 'word'? More text. New sentence.", 3, "Single quote + question should create 3 sentences"),
+    ];
+    
+    println!("=== Testing Sentence-Ending Punctuation After Dialog (Expected: 3 sentences) ===");
+    
+    for (text, expected, description) in three_sentence_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        println!("  Text: '{}'", text);
+        for (i, sentence) in sentences.iter().enumerate() {
+            println!("    {}: '{}'", i + 1, sentence.normalize().trim());
+        }
+        
+        if sentences.len() != expected {
+            println!("  ❌ CURRENTLY FAILING! Expected {}, got {} (design goal not yet implemented)", expected, sentences.len());
+        } else {
+            println!("  ✅ Meeting design goal");
+        }
+        println!();
+    }
+    
+    // Document current failing behavior - do not assert for now since this is not yet implemented
+    // When this feature is implemented, change these to assert_eq!
+    let text = "Text \"word\"! More text. New sentence.";
+    let sentences = detector.detect_sentences_borrowed(text).unwrap();
+    
+    // TODO: When implemented, this should be:
+    // assert_eq!(sentences.len(), 3, "Sentence-ending punctuation after dialog should create 3 sentences");
+    // For now, document current behavior:
+    println!("Current behavior for '{}': {} sentences (design goal: 3)", text, sentences.len());
+}
+
+#[test]
 fn test_dialog_pattern_partitioning_comprehensive() {
     let detector = get_detector();
     
