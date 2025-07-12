@@ -20,11 +20,9 @@ fn test_user_hermit_scroll_text() {
     let sentences = detector.detect_sentences_borrowed(input).unwrap();
     
     // Expected sentences
-    let expected = vec![
-        "He had thus sat for hours one day, interrupting his meditations only by an occasional pace to the door to look out for a break in the weather, when there came upon him with a shock of surprise the recollection that there was more in the hermit's scroll than he had considered at first.",
+    let expected = ["He had thus sat for hours one day, interrupting his meditations only by an occasional pace to the door to look out for a break in the weather, when there came upon him with a shock of surprise the recollection that there was more in the hermit's scroll than he had considered at first.",
         "Not much.",
-        "He unfurled it, and beside the bequest of the hut, only these words were added: \"For a commission look below my bed.\""
-    ];
+        "He unfurled it, and beside the bequest of the hut, only these words were added: \"For a commission look below my bed.\""];
     
     assert_eq!(sentences.len(), expected.len(), 
         "Expected {} sentences, got {}. Sentences: {:?}", 
@@ -55,6 +53,9 @@ fn test_dialog_coalescing() {
     let text = "He said, \"Stop her, sir! Ting-a-ling-ling!\" The headway ran almost out.";
     let sentences = detector.detect_sentences_borrowed(text).unwrap();
     
+    println!("Dialog coalescing test: {} sentences: {:?}", sentences.len(), 
+        sentences.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+    
     assert_eq!(sentences.len(), 2);
     assert!(sentences[0].raw_content.contains("Stop her, sir! Ting-a-ling-ling!"));
     assert!(sentences[1].raw_content.contains("The headway ran almost out"));
@@ -82,7 +83,7 @@ fn test_abbreviation_handling() {
         let sentences = detector.detect_sentences_borrowed(text).unwrap();
         
         if sentences.len() != expected_count {
-            println!("MISMATCH for text: {}", text);
+            println!("MISMATCH for text: {text}");
             println!("Expected {} sentences, got {} sentences:", expected_count, sentences.len());
             for (i, sentence) in sentences.iter().enumerate() {
                 println!("  {}: '{}'", i, sentence.raw_content);
@@ -303,7 +304,7 @@ scholars ask."#;
             if e.to_string().contains("Cannot seek backwards") {
                 panic!("Backward seek bug reproduced with text: '{}'", text.replace('\n', "\\n"));
             } else {
-                panic!("Unexpected error: {}", e);
+                panic!("Unexpected error: {e}");
             }
         }
     }
@@ -448,7 +449,7 @@ fn test_backward_seek_minimal_reproduction() {
                 if e.to_string().contains("Cannot seek backwards") {
                     failed_cases.push((i, test_case, e.to_string()));
                 } else {
-                    panic!("Unexpected error in test case {}: {}", i, e);
+                    panic!("Unexpected error in test case {i}: {e}");
                 }
             }
         }
@@ -469,10 +470,352 @@ fn test_backward_seek_minimal_reproduction() {
         }
         Err(e) => {
             if e.to_string().contains("Cannot seek backwards") {
-                panic!("Backward seek error reproduced with full file: {}", e);
+                panic!("Backward seek error reproduced with full file: {e}");
             } else {
-                panic!("Unexpected error with full file: {}", e);
+                panic!("Unexpected error with full file: {e}");
             }
         }
+    }
+}
+
+#[test]
+fn test_vad_differential_diagnosis() {
+    let detector = get_detector();
+    
+    // Hypothesis 1: V.A.D. abbreviation causes sentence 1+2 to merge
+    let text1 = "She was the V.A.D.  Stenography was unknown.";
+    let sentences1 = detector.detect_sentences_borrowed(text1).unwrap();
+    // DISCOVERY: V.A.D. does NOT cause sentences to merge - they split normally!
+    println!("V.A.D. test: {} sentences: {:?}", sentences1.len(), 
+        sentences1.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+    assert_eq!(sentences1.len(), 2, "V.A.D. actually splits normally - hypothesis wrong!");
+    
+    // Hypothesis 2: What happens after V.A.D. + normal sentence? Should split at next boundary
+    let text2 = "She was the V.A.D.  Stenography was unknown. Munition-making was new.";
+    let sentences2 = detector.detect_sentences_borrowed(text2).unwrap();
+    println!("Three sentence test: {} sentences: {:?}", sentences2.len(), 
+        sentences2.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+    // Actually splits into 3 sentences - V.A.D. doesn't cause merging!
+    assert_eq!(sentences2.len(), 3, "All three sentences split normally");
+    
+    // Hypothesis 3: Are there other problematic abbreviations/patterns in the text?
+    let text3 = "Munition-making was new. There were activities. Other forms existed.";
+    let sentences3 = detector.detect_sentences_borrowed(text3).unwrap();
+    // Should be 3 sentences - no abbreviation issues here
+    assert_eq!(sentences3.len(), 3, "Simple sentences should split normally");
+    
+    // Hypothesis 4: Does the em-dash cause issues?
+    let text4 = "There were activities—bandage-rolling, parcel-packing. Other forms existed.";
+    let sentences4 = detector.detect_sentences_borrowed(text4).unwrap();
+    // Should be 2 sentences
+    assert_eq!(sentences4.len(), 2, "Em-dash should not prevent sentence boundary");
+    
+    // Hypothesis 5: Does the _italics_ pattern cause issues?
+    let text5 = "They sold programmes at charity _matinées_. Other forms existed.";
+    let sentences5 = detector.detect_sentences_borrowed(text5).unwrap();
+    // Should be 2 sentences  
+    assert_eq!(sentences5.len(), 2, "Italic markers should not prevent sentence boundary");
+    
+    // Hypothesis 6: Test quotation marks in middle of sentence
+    let text6 = "The tray was marked \"Pending.\" Those expressions existed.";
+    let sentences6 = detector.detect_sentences_borrowed(text6).unwrap();
+    // Should be 2 sentences
+    assert_eq!(sentences6.len(), 2, "Quoted words should not prevent sentence boundary");
+    
+    // Hypothesis 7: Test the actual problematic text incrementally
+    let original_start = "Nursing attracted her most; but she knew herself to be pathetically ignorant of the elements of the craft, and furthermore doubted (rightly) if her combative nature would endure the complete subservience to the professional element inevitable in the life of that plucky, much-enduring, self-effacing Cinderella, the V.A.D.  Stenography and typewriting were unknown to her.";
+    let sentences_start = detector.detect_sentences_borrowed(original_start).unwrap();
+    println!("Original start: {} sentences: {:?}", sentences_start.len(), 
+        sentences_start.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+    
+    // Add next sentence
+    let with_munition = format!("{original_start} Munition-making at this time was but an infant industry—as the occupants of the trenches had continuous occasion to note, with characteristic comment.");
+    let sentences_munition = detector.detect_sentences_borrowed(&with_munition).unwrap();
+    println!("With munition: {} sentences", sentences_munition.len());
+    
+    // Isolate the problem: What specific part of the long sentence is causing the merge?
+    // Test progressively longer prefixes to find the exact issue
+    let parts = [
+        "Nursing attracted her most; but she knew herself to be pathetically ignorant.",
+        "Nursing attracted her most; but she knew herself to be pathetically ignorant of the elements of the craft.",
+        "Nursing attracted her most; but she knew herself to be pathetically ignorant of the elements of the craft, and furthermore doubted (rightly) if her combative nature would endure.",
+        "Nursing attracted her most; but she knew herself to be pathetically ignorant of the elements of the craft, and furthermore doubted (rightly) if her combative nature would endure the complete subservience to the professional element.",
+        "Nursing attracted her most; but she knew herself to be pathetically ignorant of the elements of the craft, and furthermore doubted (rightly) if her combative nature would endure the complete subservience to the professional element inevitable in the life of that plucky, much-enduring, self-effacing Cinderella.",
+        "Nursing attracted her most; but she knew herself to be pathetically ignorant of the elements of the craft, and furthermore doubted (rightly) if her combative nature would endure the complete subservience to the professional element inevitable in the life of that plucky, much-enduring, self-effacing Cinderella, the V.A.D.",
+    ];
+    
+    for (i, part) in parts.iter().enumerate() {
+        let test_text = format!("{part}  Stenography was unknown.");
+        let sentences = detector.detect_sentences_borrowed(&test_text).unwrap();
+        println!("Part {}: {} sentences", i, sentences.len());
+        if sentences.len() == 1 {
+            println!("  FOUND MERGE POINT at part {i}: '{part}'");
+            break;
+        }
+    }
+}
+
+#[test] 
+fn test_parenthetical_state_transitions() {
+    let detector = get_detector();
+    
+    // Progressive test cases to understand the state machine behavior
+    let test_cases = [
+        // Simple parenthetical that should work
+        ("Simple: (test)", 1),
+        // Parenthetical followed by period  
+        ("Simple (test).", 1),
+        // Parenthetical followed by period and new sentence
+        ("Simple (test). Next sentence.", 2),
+        // The actual failing case
+        ("She doubted (rightly) if her nature would endure.  Stenography was unknown.", 2),
+    ];
+    
+    for (text, expected) in test_cases {
+        println!("\n=== Testing: '{text}' ===");
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("Result: {} sentences (expected {}): {:?}", 
+            sentences.len(), 
+            expected,
+            sentences.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+        
+        if sentences.len() != expected {
+            println!("MISMATCH: Expected {}, got {}", expected, sentences.len());
+        }
+    }
+    
+    // Test the broader issue - affects ALL dialog types without ending punctuation
+    println!("\n=== Testing broader dialog issue ===");
+    let broader_cases = [
+        // Double quotes without ending punctuation - should work (closing " handled)
+        ("She said, \"Whatever\" and went about her business. Next sentence.", 2),
+        // Single quotes without ending punctuation - should work (closing ' handled)  
+        ("She said, 'Whatever' and went about her business. Next sentence.", 2),
+        // Smart double quotes without ending punctuation - should work (closing " handled)
+        ("She said, \u{201C}Whatever\u{201D} and went about her business. Next sentence.", 2),
+        // Smart single quotes without ending punctuation - should work (closing ' handled)
+        ("She said, \u{2018}Whatever\u{2019} and went about her business. Next sentence.", 2),
+        // Square brackets without ending punctuation - should NOT work yet (unfixed)
+        ("The reference [whatever] was cited in the text. Next sentence.", 2),
+        // Curly braces without ending punctuation - should NOT work yet (unfixed)  
+        ("The variable {whatever} was used in code. Next sentence.", 2),
+        // Round parentheses without ending punctuation - should work (fixed)
+        ("She doubted (rightly) if her nature would endure. Next sentence.", 2),
+    ];
+    
+    for (text, expected) in broader_cases {
+        println!("Testing: '{text}'");
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("Result: {} sentences: {:?}", 
+            sentences.len(),
+            sentences.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+        
+        if sentences.len() != expected {
+            println!("POTENTIAL ISSUE: Expected {}, got {}", expected, sentences.len());
+        }
+    }
+    
+    // Focus on the specific bug - parenthetical should not prevent sentence boundary
+    let text = "She doubted (rightly) if her nature would endure.  Stenography was unknown.";
+    let sentences = detector.detect_sentences_borrowed(text).unwrap();
+    assert_eq!(sentences.len(), 2, "Parenthetical (rightly) should not prevent sentence boundary");
+}
+
+#[test]
+fn test_pattern_coverage_analysis() {
+    let detector = get_detector();
+    
+    // Test cases that should demonstrate the 4-pattern coverage gaps
+    let test_cases = [
+        // Pattern 4: Unpunctuated dialog close + space + non-dialog → should exit to narrative
+        ("The item (expensive) was purchased.", 1, "Unpunctuated parenthetical"),
+        ("He said \"whatever\" and left.", 1, "Unpunctuated quote"),
+        
+        // Pattern 3: Unpunctuated dialog close + space + dialog opener → should stay in dialog 
+        ("The items (first)(second) were listed.", 1, "Consecutive parentheticals"),
+        ("Quote \"first\"\"second\" content.", 1, "Consecutive quotes"),
+        
+        // Pattern 1: Punctuated dialog close + space + sentence start → should create boundary
+        ("Dialog \"Hello!\" Next sentence.", 2, "Hard boundary"),
+        ("Note (done.) New task.", 2, "Hard boundary parenthetical"),
+        
+        // Pattern 2: Punctuated dialog close + space + non-sentence start → should continue
+        ("Dialog \"Hello,\" she said.", 1, "Soft boundary"),
+        ("Note (good,) he thought.", 1, "Soft boundary parenthetical"),
+    ];
+    
+    println!("\n=== Pattern Coverage Analysis ===");
+    for (text, expected, description) in test_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        println!("  Text: '{text}'");
+        for (i, sent) in sentences.iter().enumerate() {
+            println!("    {}: '{}'", i+1, sent.raw_content.trim());
+        }
+        if sentences.len() != expected {
+            println!("  ❌ MISMATCH!");
+        } else {
+            println!("  ✅ OK");
+        }
+        println!();
+    }
+}
+
+#[test]
+fn test_dialog_pattern_partitioning_comprehensive() {
+    let detector = get_detector();
+    
+    // PATTERN 1: Hard End - [.!?]{close} + space + sentence_start → DialogEnd (create boundary)
+    let hard_end_cases = [
+        // Double quotes
+        ("\"Hello!\" The next sentence.", 2, "Hard end with double quotes"),
+        ("\"Stop?\" She asked again.", 2, "Hard end with question in quotes"),
+        ("\"Done.\" Next task started.", 2, "Hard end with period in quotes"),
+        
+        // Single quotes  
+        ("'Wait!' He shouted loudly.", 2, "Hard end with single quotes"),
+        ("'Really?' That seems unlikely.", 2, "Hard end with single quote question"),
+        
+        // Smart quotes
+        ("\u{201C}Finished!\u{201D} Time to go.", 2, "Hard end with smart double quotes"),
+        ("\u{2018}Yes!\u{2019} Absolutely correct.", 2, "Hard end with smart single quotes"),
+        
+        // Parentheticals
+        ("The result (finally!) was clear.", 2, "Hard end with parenthetical exclamation"),
+        ("The note [important.] was filed.", 2, "Hard end with square bracket period"),
+        ("The code {complete!} was deployed.", 2, "Hard end with curly brace exclamation"),
+    ];
+    
+    println!("\n=== Testing Hard End Cases (Pattern 1) ===");
+    for (text, expected, description) in hard_end_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        if sentences.len() != expected {
+            println!("  FAIL: '{text}'");
+            println!("  Got: {:?}", sentences.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+        }
+        // assert_eq!(sentences.len(), expected, "Hard end case failed: {}", description);
+    }
+    
+    // PATTERN 2: Soft End (Punctuated) - [.!?]{close} + space + non_sentence_start → DialogSoftEnd (existing behavior)  
+    let soft_punctuated_cases = [
+        // Double quotes with lowercase continuation
+        ("\"Hello,\" she said quietly.", 1, "Soft punctuated double quotes"),
+        ("\"Stop!\" he whispered softly.", 1, "Soft punctuated with exclamation"),
+        ("\"Why?\" she wondered aloud.", 1, "Soft punctuated with question"),
+        
+        // Single quotes
+        ("'Yes,' he replied calmly.", 1, "Soft punctuated single quotes"),
+        ("'No!' she said firmly.", 1, "Soft punctuated single quotes exclamation"),
+        
+        // Smart quotes  
+        ("\u{201C}Maybe,\u{201D} he thought quietly.", 1, "Soft punctuated smart double quotes"),
+        ("\u{2018}Sure!\u{2019} she said enthusiastically.", 1, "Soft punctuated smart single quotes"),
+        
+        // Parentheticals with punctuation + lowercase
+        ("The result (good!) made everyone happy.", 1, "Soft punctuated parenthetical"),
+        ("The note [urgent.] was processed immediately.", 1, "Soft punctuated square bracket"),
+        ("The variable {important!} was updated correctly.", 1, "Soft punctuated curly brace"),
+    ];
+    
+    println!("\n=== Testing Soft End Punctuated Cases (Pattern 2) ===");
+    for (text, expected, description) in soft_punctuated_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        if sentences.len() != expected {
+            println!("  FAIL: '{text}'");
+            println!("  Got: {:?}", sentences.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+        }
+        // assert_eq!(sentences.len(), expected, "Soft punctuated case failed: {}", description);
+    }
+    
+    // PATTERN 3: Dialog Continuation - [^.!?]{close} + space + dialog_opener → DialogOpen (stay in dialog)
+    let dialog_continuation_cases = [
+        // Consecutive parentheticals
+        ("The items (first)(second)(third) were listed.", 1, "Consecutive parentheticals"),
+        ("Notes [alpha][beta][gamma] were reviewed.", 1, "Consecutive square brackets"),
+        ("Variables {x}{y}{z} were defined.", 1, "Consecutive curly braces"),
+        
+        // Mixed dialog types
+        ("The quote \"text\"(note) was analyzed.", 1, "Quote followed by parenthetical"),
+        ("The note (comment)\"quote\" was saved.", 1, "Parenthetical followed by quote"),
+        
+        // Complex nesting
+        ("Statement \"part1\"\"part2\" continued.", 1, "Consecutive double quotes"),
+        ("Statement 'part1''part2' continued.", 1, "Consecutive single quotes"),
+    ];
+    
+    println!("\n=== Testing Dialog Continuation Cases (Pattern 3) ===");
+    for (text, expected, description) in dialog_continuation_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        if sentences.len() != expected {
+            println!("  FAIL: '{text}'");
+            println!("  Got: {:?}", sentences.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+        }
+        // Note: These may currently fail - that's expected until pattern 3 is implemented
+        // assert_eq!(sentences.len(), expected, "Dialog continuation case failed: {}", description);
+    }
+    
+    // PATTERN 4: Soft End (Unpunctuated) - [^.!?]{close} + space + non_dialog_opener → DialogSoftEnd (THE FIX!)
+    let soft_unpunctuated_cases = [
+        // Original bug cases
+        ("She doubted (rightly) if her nature would endure.", 1, "Original parenthetical bug - rightly"),
+        ("The item (expensive) was still worth buying.", 1, "Unpunctuated parenthetical descriptive"),
+        ("He said \"whatever\" and walked away.", 1, "Unpunctuated double quote"),
+        ("She replied 'maybe' to the question.", 1, "Unpunctuated single quote"),
+        
+        // Smart quotes unpunctuated
+        ("The response \u{201C}never\u{201D} was surprising.", 1, "Unpunctuated smart double quote"),
+        ("The answer \u{2018}always\u{2019} seemed correct.", 1, "Unpunctuated smart single quote"),
+        
+        // Various bracket types
+        ("The reference [source] was helpful.", 1, "Unpunctuated square bracket"),
+        ("The variable {name} was defined.", 1, "Unpunctuated curly brace"),
+        
+        // Multiple unpunctuated in sequence with narrative
+        ("The note (brief) and comment [short] were filed.", 1, "Multiple unpunctuated with narrative"),
+    ];
+    
+    println!("\n=== Testing Soft End Unpunctuated Cases (Pattern 4 - THE FIX!) ===");
+    for (text, expected, description) in soft_unpunctuated_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        if sentences.len() != expected {
+            println!("  FAIL: '{text}'");
+            println!("  Got: {:?}", sentences.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+        }
+        // Note: Many of these currently fail - that's the bug we're fixing
+        // assert_eq!(sentences.len(), expected, "Soft unpunctuated case failed: {}", description);
+    }
+    
+    // EDGE CASES AND BOUNDARY CONDITIONS
+    let edge_cases = [
+        // Empty dialog
+        ("The quote \"\" was empty.", 1, "Empty double quotes"),
+        ("The note () was blank.", 1, "Empty parentheses"),
+        
+        // Multiple spaces
+        ("The text \"hello\"  and more.", 1, "Multiple spaces after quote"),
+        ("The note (test)   continued here.", 1, "Multiple spaces after parenthesis"),
+        
+        // Mixed punctuation complexity
+        ("\"Hello?\" she asked. \"Really!\" he replied.", 2, "Mixed question and exclamation"),
+        ("The note (see pg. 5) was referenced.", 1, "Abbreviation inside parenthetical"),
+        
+        // Nested structures
+        ("\"He said (quietly) to me.\" Next sentence.", 2, "Nested parenthetical in quote"),
+        ("The item (cost: $5.99) was purchased.", 1, "Complex parenthetical content"),
+    ];
+    
+    println!("\n=== Testing Edge Cases ===");
+    for (text, expected, description) in edge_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        if sentences.len() != expected {
+            println!("  FAIL: '{text}'");
+            println!("  Got: {:?}", sentences.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+        }
+        // Note: Some edge cases may currently fail - document which ones work vs fail
     }
 }

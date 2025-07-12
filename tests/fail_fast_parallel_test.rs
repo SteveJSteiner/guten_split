@@ -46,7 +46,7 @@ async fn test_fail_fast_parallel_processing() {
     // The command may succeed overall if it processes some files before hitting errors
     // Check that it processed fewer files than expected due to fail-fast
     let stderr = String::from_utf8_lossy(&output.stderr);
-    println!("Command output: {}", stderr);
+    println!("Command output: {stderr}");
     
     // Should not process all files - some aux files should not exist
     let good3_aux = root_path.join("good3-0_seams.txt");
@@ -108,7 +108,7 @@ async fn test_fail_fast_utf8_error() {
     // With the new behavior, UTF-8 validation happens during processing
     // The command may succeed overall if valid files are processed first
     let stderr = String::from_utf8_lossy(&output.stderr);
-    println!("Command output: {}", stderr);
+    println!("Command output: {stderr}");
     
     // Check that the invalid UTF-8 file was handled appropriately
     // (either by failing during processing or being skipped)

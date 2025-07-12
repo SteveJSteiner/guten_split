@@ -284,6 +284,21 @@ impl DialogStateMachine {
     fn negate_char_class(char_class: &str) -> String {
         format!("[^{}]", &char_class[1..char_class.len()-1])
     }
+    
+    /// Find the dialog opener character in a matched pattern for Pattern 3 (Dialog Continuation)
+    fn find_dialog_opener_in_match(&self, matched_text: &str) -> Option<char> {
+        // Find the last character that could be a dialog opener
+        // Pattern 3 format: [^.!?]{close} + space + {dialog_opener}
+        // We need to find the dialog_opener part
+        for ch in matched_text.chars().rev() {
+            match ch {
+                '"' | '\'' | '\u{201C}' | '\u{2018}' | '(' | '[' | '{' => return Some(ch),
+                ' ' | '\t' => continue, // Skip whitespace
+                _ => break, // Stop at non-whitespace, non-dialog-opener
+            }
+        }
+        None
+    }
 
     pub fn new() -> Result<Self> {
         let mut state_patterns = HashMap::new();
@@ -360,13 +375,13 @@ impl DialogStateMachine {
         let curly_brace_close = r"\}";         // }
         
         
-        // Dialog ending patterns: HARD_END (sentence boundary) vs SOFT_END (continue sentence)
-        // Use same approach - separate dialog and non-dialog sentence starts
-        let all_sentence_start_chars = format!("{non_dialog_sentence_start_chars}|{dialog_open_chars}");
-        let not_all_sentence_start_chars = Self::negate_char_class(&all_sentence_start_chars);
+        // UNIFIED 4-PATTERN APPROACH: Complete partitioning with no holes/overlaps
+        // WHY: Current patterns have coverage gaps - need complete partitioning for all dialog types
         
-        let dialog_hard_double_end = format!("{sentence_end_punct}{double_quote_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
-        let dialog_soft_double_end = format!("{sentence_end_punct}{double_quote_close}({soft_separator}){not_all_sentence_start_chars}");
+        let not_sentence_end_punct = Self::negate_char_class(sentence_end_punct);
+        let not_dialog_openers = Self::negate_char_class(dialog_open_chars);
+        let sentence_starts = format!("{}|{}", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
+        let not_sentence_starts = Self::negate_char_class(&format!("[{sentence_starts}]"));
         
         // NARRATIVE STATE - Mutually exclusive patterns
         let narrative_patterns = vec![
@@ -440,117 +455,173 @@ impl DialogStateMachine {
         state_patterns.insert(DialogState::Narrative, Regex::new_many(&narrative_patterns)?);
         state_pattern_mappings.insert(DialogState::Narrative, narrative_mappings);
         
-        // DIALOG DOUBLE QUOTE STATE - Multi-pattern with hard separator FIRST (highest priority)
+        // DIALOG DOUBLE QUOTE STATE - Apply unified 4-pattern approach
+        // WHY: Debug regex construction - print actual patterns for verification
+        let dialog_hard_end = format!("{sentence_end_punct}{double_quote_close}({soft_separator})[{sentence_starts}]");
+        let dialog_soft_end_punctuated = format!("{sentence_end_punct}{double_quote_close}({soft_separator}){not_sentence_starts}");
+        let dialog_continuation = format!("{not_sentence_end_punct}{double_quote_close}({soft_separator}){dialog_open_chars}");
+        let dialog_soft_end_unpunctuated = format!("{not_sentence_end_punct}{double_quote_close}({soft_separator}){not_dialog_openers}");
+        
+        #[cfg(feature = "debug-states")]
+        {
+            eprintln!("DEBUG: Double quote patterns:");
+            eprintln!("  Hard end: {dialog_hard_end}");
+            eprintln!("  Soft end punctuated: {dialog_soft_end_punctuated}");
+            eprintln!("  Continuation: {dialog_continuation}");
+            eprintln!("  Soft end unpunctuated: {dialog_soft_end_unpunctuated}");
+        }
+        
         let dialog_double_patterns = vec![
-            pure_hard_sep.as_str(),                  // PatternID 0 = paragraph break (HIGHEST PRIORITY)
-            dialog_hard_double_end.as_str(),         // PatternID 1 = sentence boundary
-            dialog_soft_double_end.as_str(),         // PatternID 2 = continue sentence  
+            pure_hard_sep.as_str(),             // Hard separator first (highest priority)
+            dialog_hard_end.as_str(),           // Pattern 1: Hard End
+            dialog_soft_end_punctuated.as_str(), // Pattern 2: Soft End (punctuated)
+            dialog_continuation.as_str(),       // Pattern 3: Dialog Continuation
+            dialog_soft_end_unpunctuated.as_str(), // Pattern 4: Soft End (unpunctuated)
         ];
         let dialog_double_mappings = vec![
-            (MatchType::HardSeparator, DialogState::Unknown),        // Hard separator
-            (MatchType::DialogEnd, DialogState::Narrative),          // Hard dialog end
-            (MatchType::DialogSoftEnd, DialogState::Narrative),      // Soft dialog end
+            (MatchType::HardSeparator, DialogState::Unknown),
+            (MatchType::DialogEnd, DialogState::Narrative),
+            (MatchType::DialogSoftEnd, DialogState::Narrative),
+            (MatchType::DialogOpen, DialogState::Unknown), // Will determine state from opener
+            (MatchType::DialogSoftEnd, DialogState::Narrative),
         ];
         state_patterns.insert(DialogState::DialogDoubleQuote, Regex::new_many(&dialog_double_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogDoubleQuote, dialog_double_mappings);
         
-        // DIALOG SINGLE QUOTE STATE - Similar structure
-        let dialog_hard_single_end = format!("{sentence_end_punct}{single_quote_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
-        let dialog_soft_single_end = format!("{sentence_end_punct}{single_quote_close}({soft_separator}){not_all_sentence_start_chars}");
+        // DIALOG SINGLE QUOTE STATE - Apply unified 4-pattern approach
+        let dialog_hard_end = format!("{sentence_end_punct}{single_quote_close}({soft_separator})[{sentence_starts}]");
+        let dialog_soft_end_punctuated = format!("{sentence_end_punct}{single_quote_close}({soft_separator}){not_sentence_starts}");
+        let dialog_continuation = format!("{not_sentence_end_punct}{single_quote_close}({soft_separator}){dialog_open_chars}");
+        let dialog_soft_end_unpunctuated = format!("{not_sentence_end_punct}{single_quote_close}({soft_separator}){not_dialog_openers}");
         
         let dialog_single_patterns = vec![
-            pure_hard_sep.as_str(),                  // PatternID 0 = paragraph break (HIGHEST PRIORITY)
-            dialog_hard_single_end.as_str(),         // PatternID 1 = sentence boundary
-            dialog_soft_single_end.as_str(),         // PatternID 2 = continue sentence
+            pure_hard_sep.as_str(),
+            dialog_hard_end.as_str(),
+            dialog_soft_end_punctuated.as_str(),
+            dialog_continuation.as_str(),
+            dialog_soft_end_unpunctuated.as_str(),
         ];
         let dialog_single_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),
             (MatchType::DialogEnd, DialogState::Narrative),
             (MatchType::DialogSoftEnd, DialogState::Narrative),
+            (MatchType::DialogOpen, DialogState::Unknown),
+            (MatchType::DialogSoftEnd, DialogState::Narrative),
         ];
         state_patterns.insert(DialogState::DialogSingleQuote, Regex::new_many(&dialog_single_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogSingleQuote, dialog_single_mappings);
         
-        // DIALOG SMART DOUBLE QUOTE STATE  
-        let dialog_hard_smart_double_end = format!("{sentence_end_punct}{smart_double_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
-        let dialog_soft_smart_double_end = format!("{sentence_end_punct}{smart_double_close}({soft_separator}){not_all_sentence_start_chars}");
+        // DIALOG SMART DOUBLE QUOTE STATE - Apply unified 4-pattern approach
+        let dialog_hard_end = format!("{sentence_end_punct}{smart_double_close}({soft_separator})[{sentence_starts}]");
+        let dialog_soft_end_punctuated = format!("{sentence_end_punct}{smart_double_close}({soft_separator}){not_sentence_starts}");
+        let dialog_continuation = format!("{not_sentence_end_punct}{smart_double_close}({soft_separator}){dialog_open_chars}");
+        let dialog_soft_end_unpunctuated = format!("{not_sentence_end_punct}{smart_double_close}({soft_separator}){not_dialog_openers}");
         
         let dialog_smart_double_patterns = vec![
             pure_hard_sep.as_str(),
-            dialog_hard_smart_double_end.as_str(),
-            dialog_soft_smart_double_end.as_str(),
+            dialog_hard_end.as_str(),
+            dialog_soft_end_punctuated.as_str(),
+            dialog_continuation.as_str(),
+            dialog_soft_end_unpunctuated.as_str(),
         ];
         let dialog_smart_double_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),
             (MatchType::DialogEnd, DialogState::Narrative),
             (MatchType::DialogSoftEnd, DialogState::Narrative),
+            (MatchType::DialogOpen, DialogState::Unknown),
+            (MatchType::DialogSoftEnd, DialogState::Narrative),
         ];
         state_patterns.insert(DialogState::DialogSmartDoubleOpen, Regex::new_many(&dialog_smart_double_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogSmartDoubleOpen, dialog_smart_double_mappings);
         
-        // DIALOG SMART SINGLE QUOTE STATE
-        let dialog_hard_smart_single_end = format!("{sentence_end_punct}{smart_single_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
-        let dialog_soft_smart_single_end = format!("{sentence_end_punct}{smart_single_close}({soft_separator}){not_all_sentence_start_chars}");
+        // DIALOG SMART SINGLE QUOTE STATE - Apply unified 4-pattern approach
+        let dialog_hard_end = format!("{sentence_end_punct}{smart_single_close}({soft_separator})[{sentence_starts}]");
+        let dialog_soft_end_punctuated = format!("{sentence_end_punct}{smart_single_close}({soft_separator}){not_sentence_starts}");
+        let dialog_continuation = format!("{not_sentence_end_punct}{smart_single_close}({soft_separator}){dialog_open_chars}");
+        let dialog_soft_end_unpunctuated = format!("{not_sentence_end_punct}{smart_single_close}({soft_separator}){not_dialog_openers}");
         
         let dialog_smart_single_patterns = vec![
             pure_hard_sep.as_str(),
-            dialog_hard_smart_single_end.as_str(),
-            dialog_soft_smart_single_end.as_str(),
+            dialog_hard_end.as_str(),
+            dialog_soft_end_punctuated.as_str(),
+            dialog_continuation.as_str(),
+            dialog_soft_end_unpunctuated.as_str(),
         ];
         let dialog_smart_single_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),
             (MatchType::DialogEnd, DialogState::Narrative),
             (MatchType::DialogSoftEnd, DialogState::Narrative),
+            (MatchType::DialogOpen, DialogState::Unknown),
+            (MatchType::DialogSoftEnd, DialogState::Narrative),
         ];
         state_patterns.insert(DialogState::DialogSmartSingleOpen, Regex::new_many(&dialog_smart_single_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogSmartSingleOpen, dialog_smart_single_mappings);
         
-        // DIALOG PARENTHETICAL ROUND STATE
-        let dialog_hard_paren_round_end = format!("{sentence_end_punct}{round_paren_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
-        let dialog_soft_paren_round_end = format!("{sentence_end_punct}{round_paren_close}({soft_separator}){not_all_sentence_start_chars}");
+        // DIALOG PARENTHETICAL ROUND STATE - Apply unified 4-pattern approach
+        // WHY: Apply same unified patterns to fix coverage gaps like (done.) New task.
+        let dialog_hard_end = format!("{sentence_end_punct}{round_paren_close}({soft_separator})[{sentence_starts}]");
+        let dialog_soft_end_punctuated = format!("{sentence_end_punct}{round_paren_close}({soft_separator}){not_sentence_starts}");
+        let dialog_continuation = format!("{not_sentence_end_punct}{round_paren_close}({soft_separator}){dialog_open_chars}");
+        let dialog_soft_end_unpunctuated = format!("{not_sentence_end_punct}{round_paren_close}({soft_separator}){not_dialog_openers}");
         
         let dialog_paren_round_patterns = vec![
             pure_hard_sep.as_str(),
-            dialog_hard_paren_round_end.as_str(),
-            dialog_soft_paren_round_end.as_str(),
+            dialog_hard_end.as_str(),
+            dialog_soft_end_punctuated.as_str(),
+            dialog_continuation.as_str(),
+            dialog_soft_end_unpunctuated.as_str(),
         ];
         let dialog_paren_round_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),
             (MatchType::DialogEnd, DialogState::Narrative),
             (MatchType::DialogSoftEnd, DialogState::Narrative),
+            (MatchType::DialogOpen, DialogState::Unknown),
+            (MatchType::DialogSoftEnd, DialogState::Narrative),
         ];
         state_patterns.insert(DialogState::DialogParenthheticalRound, Regex::new_many(&dialog_paren_round_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogParenthheticalRound, dialog_paren_round_mappings);
         
-        // DIALOG PARENTHETICAL SQUARE STATE
-        let dialog_hard_paren_square_end = format!("{sentence_end_punct}{square_bracket_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
-        let dialog_soft_paren_square_end = format!("{sentence_end_punct}{square_bracket_close}({soft_separator}){not_all_sentence_start_chars}");
+        // DIALOG PARENTHETICAL SQUARE STATE - Apply unified 4-pattern approach
+        let dialog_hard_end = format!("{sentence_end_punct}{square_bracket_close}({soft_separator})[{sentence_starts}]");
+        let dialog_soft_end_punctuated = format!("{sentence_end_punct}{square_bracket_close}({soft_separator}){not_sentence_starts}");
+        let dialog_continuation = format!("{not_sentence_end_punct}{square_bracket_close}({soft_separator}){dialog_open_chars}");
+        let dialog_soft_end_unpunctuated = format!("{not_sentence_end_punct}{square_bracket_close}({soft_separator}){not_dialog_openers}");
         
         let dialog_paren_square_patterns = vec![
             pure_hard_sep.as_str(),
-            dialog_hard_paren_square_end.as_str(),
-            dialog_soft_paren_square_end.as_str(),
+            dialog_hard_end.as_str(),
+            dialog_soft_end_punctuated.as_str(),
+            dialog_continuation.as_str(),
+            dialog_soft_end_unpunctuated.as_str(),
         ];
         let dialog_paren_square_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),
             (MatchType::DialogEnd, DialogState::Narrative),
             (MatchType::DialogSoftEnd, DialogState::Narrative),
+            (MatchType::DialogOpen, DialogState::Unknown),
+            (MatchType::DialogSoftEnd, DialogState::Narrative),
         ];
         state_patterns.insert(DialogState::DialogParenthheticalSquare, Regex::new_many(&dialog_paren_square_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogParenthheticalSquare, dialog_paren_square_mappings);
         
-        // DIALOG PARENTHETICAL CURLY STATE
-        let dialog_hard_paren_curly_end = format!("{sentence_end_punct}{curly_brace_close}({soft_separator})[{}{}]", &non_dialog_sentence_start_chars[1..non_dialog_sentence_start_chars.len()-1], &dialog_open_chars[1..dialog_open_chars.len()-1]);
-        let dialog_soft_paren_curly_end = format!("{sentence_end_punct}{curly_brace_close}({soft_separator}){not_all_sentence_start_chars}");
+        // DIALOG PARENTHETICAL CURLY STATE - Apply unified 4-pattern approach
+        let dialog_hard_end = format!("{sentence_end_punct}{curly_brace_close}({soft_separator})[{sentence_starts}]");
+        let dialog_soft_end_punctuated = format!("{sentence_end_punct}{curly_brace_close}({soft_separator}){not_sentence_starts}");
+        let dialog_continuation = format!("{not_sentence_end_punct}{curly_brace_close}({soft_separator}){dialog_open_chars}");
+        let dialog_soft_end_unpunctuated = format!("{not_sentence_end_punct}{curly_brace_close}({soft_separator}){not_dialog_openers}");
         
         let dialog_paren_curly_patterns = vec![
             pure_hard_sep.as_str(),
-            dialog_hard_paren_curly_end.as_str(),
-            dialog_soft_paren_curly_end.as_str(),
+            dialog_hard_end.as_str(),
+            dialog_soft_end_punctuated.as_str(),
+            dialog_continuation.as_str(),
+            dialog_soft_end_unpunctuated.as_str(),
         ];
         let dialog_paren_curly_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),
             (MatchType::DialogEnd, DialogState::Narrative),
+            (MatchType::DialogSoftEnd, DialogState::Narrative),
+            (MatchType::DialogOpen, DialogState::Unknown),
             (MatchType::DialogSoftEnd, DialogState::Narrative),
         ];
         state_patterns.insert(DialogState::DialogParenthheticalCurly, Regex::new_many(&dialog_paren_curly_patterns)?);
@@ -611,7 +682,7 @@ impl DialogStateMachine {
                 };
                 
                 
-                // Handle special cases for hard separator context
+                // Handle special cases for hard separator context and dialog continuation
                 let (match_type, next_state) = if matches!(match_type, MatchType::HardSeparator) {
                     // Check if this hard separator should be rejected due to preceding internal punctuation
                     if self.should_reject_hard_separator(text.as_bytes(), match_start_byte.0) {
@@ -619,9 +690,32 @@ impl DialogStateMachine {
                     } else {
                         (match_type, next_state)
                     }
+                } else if matches!(match_type, MatchType::DialogOpen) && next_state == DialogState::Unknown {
+                    // Pattern 3: Dialog Continuation - determine target state based on dialog opener
+                    let dialog_opener = self.find_dialog_opener_in_match(matched_text);
+                    let target_state = match dialog_opener {
+                        Some('"') => DialogState::DialogDoubleQuote,
+                        Some('\'') => DialogState::DialogSingleQuote,
+                        Some('\u{201C}') => DialogState::DialogSmartDoubleOpen,  // "
+                        Some('\u{2018}') => DialogState::DialogSmartSingleOpen,  // '
+                        Some('(') => DialogState::DialogParenthheticalRound,
+                        Some('[') => DialogState::DialogParenthheticalSquare,
+                        Some('{') => DialogState::DialogParenthheticalCurly,
+                        _ => current_state.clone(), // Stay in current state if can't determine
+                    };
+                    (match_type, target_state)
                 } else {
                     (match_type, next_state)
                 };
+                
+                // Optional compile-time debug tracing for state transitions
+                #[cfg(feature = "debug-states")]
+                eprintln!("DEBUG: State transition at byte {}: '{}' | {:?} -> {:?} | Match: {:?}", 
+                    match_start_byte.0, 
+                    matched_text.replace('\n', "\\n"),
+                    current_state, 
+                    next_state, 
+                    match_type);
                 
                 match match_type {
                     MatchType::NarrativeToDialog => {
