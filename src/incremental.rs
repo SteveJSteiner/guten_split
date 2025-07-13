@@ -12,7 +12,8 @@ pub fn generate_aux_file_path(source_path: &Path) -> PathBuf {
     let file_stem = aux_path.file_stem()
         .and_then(|s| s.to_str())
         .unwrap_or("unknown");
-    aux_path.set_file_name(format!("{file_stem}_seams.txt"));
+    
+    aux_path.set_file_name(format!("{file_stem}_seams2.txt"));
     aux_path
 }
 

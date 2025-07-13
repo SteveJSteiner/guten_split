@@ -4,6 +4,7 @@
 
 pub mod normalization;
 pub mod dialog_detector;
+// pub mod dialog_detector2;  // Disabled
 pub mod abbreviations;
 
 // Re-export core types

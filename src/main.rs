@@ -54,6 +54,7 @@ struct RunStats {
 /// Process files using overlapped discovery and processing pipeline
 /// WHY: Overlaps file discovery with processing to reduce total pipeline time
 async fn process_with_overlapped_pipeline(
+    root_dir: &std::path::Path,
     args: &Args,
     restart_log: &mut RestartLog,
 ) -> Result<(u64, u64, u64, u64, u64, Vec<FileStats>, std::time::Duration)> {
@@ -66,12 +67,12 @@ async fn process_with_overlapped_pipeline(
     };
     
     // Perform overlapped discovery and processing
-    info!("Starting overlapped file discovery and processing in: {}", args.root_dir.display());
+    info!("Starting overlapped file discovery and processing in: {}", root_dir.display());
     
     let fail_fast = args.fail_fast;
     let quiet = args.quiet;
     let calculate_length_stats = args.sentence_length_stats;
-    let mut discovery_stream = Box::pin(discovery::discover_files_parallel(&args.root_dir, discovery_config));
+    let mut discovery_stream = Box::pin(discovery::discover_files_parallel(root_dir, discovery_config));
     let mut discovered_files = Vec::new();
     let mut valid_files = Vec::new();
     let mut invalid_files = Vec::new();
@@ -104,6 +105,7 @@ async fn process_with_overlapped_pipeline(
                     let detector_clone = detector.clone();
                     let path = file_validation.path.clone();
                     let overwrite_all = args.overwrite_all;
+                    let debug_seams = args.debug_seams;
                     
                     // Check if file should be processed using restart log
                     let should_process = should_process_file(&path, restart_log, overwrite_all).await.unwrap_or(true);
@@ -117,6 +119,7 @@ async fn process_with_overlapped_pipeline(
                                 overwrite_all,
                                 quiet,
                                 calculate_length_stats,
+                                debug_seams,
                             ).await
                         });
                         
@@ -239,10 +242,10 @@ async fn process_with_overlapped_pipeline(
     }
     
     // Save restart log
-    if let Err(e) = restart_log.save(&args.root_dir).await {
+    if let Err(e) = restart_log.save(root_dir).await {
         info!("Warning: Failed to save restart log: {}", e);
     } else {
-        info!("Saved restart log to {}", args.root_dir.join(".seams_restart.json").display());
+        info!("Saved restart log to {}", root_dir.join(".seams_restart.json").display());
     }
     
     let processing_duration = pipeline_start.elapsed();
@@ -273,7 +276,7 @@ async fn process_with_overlapped_pipeline(
             println!("• Verify your directory contains Project Gutenberg files ending in '-0.txt'");
             println!("• Check subdirectories - seams searches recursively");
             println!("• Example valid filenames: 'pg1234-0.txt', 'alice-0.txt'");
-            println!("• Try: find {} -name '*-0.txt' -type f", args.root_dir.display());
+            println!("• Try: find {} -name '*-0.txt' -type f", root_dir.display());
         }
     }
     
@@ -347,6 +350,7 @@ async fn process_single_file_restart(
     _overwrite_all: bool,
     quiet: bool,
     calculate_length_stats: bool,
+    debug_seams: bool,
 ) -> Result<(u64, u64, u64, bool, FileStats)> {
     let start_time = std::time::Instant::now();
     
@@ -369,11 +373,22 @@ async fn process_single_file_restart(
 
     // WHY: Measure sentence detection time separately from total processing time
     let sentence_detection_start = std::time::Instant::now();
-    let sentences = detector.detect_sentences_borrowed(content)
-        .map_err(|e| anyhow::anyhow!(
-            "Sentence detection failed for: {}\nError: {}\n\nSUGGESTIONS:\n• File may contain unusual text patterns that confuse the detector\n• Ensure file contains valid Project Gutenberg text format\n• Check file is not corrupted or truncated",
-            path.display(), e
-        ))?;
+    let (sentences, debug_info) = if debug_seams {
+        // Use debug-enabled detection when debug mode is active
+        detector.detect_sentences_borrowed_with_debug(content)
+            .map_err(|e| anyhow::anyhow!(
+                "Sentence detection failed for: {}\nError: {}\n\nSUGGESTIONS:\n• File may contain unusual text patterns that confuse the detector\n• Ensure file contains valid Project Gutenberg text format\n• Check file is not corrupted or truncated",
+                path.display(), e
+            ))?
+    } else {
+        // Use standard detection for performance when debug is disabled
+        let sentences = detector.detect_sentences_borrowed(content)
+            .map_err(|e| anyhow::anyhow!(
+                "Sentence detection failed for: {}\nError: {}\n\nSUGGESTIONS:\n• File may contain unusual text patterns that confuse the detector\n• Ensure file contains valid Project Gutenberg text format\n• Check file is not corrupted or truncated",
+                path.display(), e
+            ))?;
+        (sentences, Vec::new())
+    };
     let sentence_detection_time = sentence_detection_start.elapsed();
     
     let sentence_count = sentences.len() as u64;
@@ -382,7 +397,12 @@ async fn process_single_file_restart(
     
     // Generate auxiliary file
     let aux_path = crate::incremental::generate_aux_file_path(path);
-    crate::parallel_processing::write_auxiliary_file_borrowed(&aux_path, &sentences, detector).await?;
+    let debug_info_opt = if debug_seams && !debug_info.is_empty() {
+        Some(debug_info.as_slice())
+    } else {
+        None
+    };
+    crate::parallel_processing::write_auxiliary_file_borrowed(&aux_path, &sentences, detector, debug_seams, debug_info_opt).await?;
     
     // Calculate sentence length statistics only if requested
     let sentence_length_stats = if calculate_length_stats {
@@ -475,6 +495,7 @@ async fn process_single_file_mode(
         args.overwrite_all,
         args.quiet,
         args.sentence_length_stats,
+        args.debug_seams,
     ).await;
     
     match result {
@@ -586,6 +607,85 @@ async fn process_single_file_mode(
     }
 }
 
+/// Write debug output to stdout in the same format as _seams-debug.txt files
+/// WHY: Provides immediate debug feedback without temporary file creation
+fn write_debug_output_to_stdout(
+    sentences: &[crate::sentence_detector::DetectedSentenceBorrowed<'_>],
+    debug_info: Option<&[crate::sentence_detector::dialog_detector::DebugTransitionInfo]>,
+) {
+    if let Some(debug_transitions) = debug_info {
+        // Use real debug information when available
+        for (sentence_idx, sentence) in sentences.iter().enumerate() {
+            // Find debug transitions for this sentence
+            let sentence_transitions: Vec<_> = debug_transitions.iter()
+                .filter(|t| t.sentence_index == sentence_idx)
+                .collect();
+            
+            if sentence_transitions.is_empty() {
+                // No transitions found for this sentence - write placeholder
+                println!(
+                    "{}\t{}\t({},{},{},{})\tUnknown\tUnknown\tUnknown\tno_pattern\tno_pattern_name\tno_seam_text",
+                    sentence.index,
+                    sentence.normalize(),
+                    sentence.span.start_line,
+                    sentence.span.start_col,
+                    sentence.span.end_line,
+                    sentence.span.end_col, // seam_text
+                );
+            } else {
+                // Write all transitions for this sentence
+                for transition in sentence_transitions {
+                    println!(
+                        "{}\t{}\t({},{},{},{})\t{:?}\t{:?}\t{:?}\t{}\t{}\t{}",
+                        sentence.index,
+                        sentence.normalize(),
+                        sentence.span.start_line,
+                        sentence.span.start_col,
+                        sentence.span.end_line,
+                        sentence.span.end_col,
+                        transition.state_before,
+                        transition.state_after,
+                        transition.transition_type,
+                        transition.matched_pattern.replace('\n', "\\n").replace('\t', "\\t"), // Escape TSV special chars
+                        transition.pattern_name,
+                        transition.seam_text.replace('\n', "\\n").replace('\t', "\\t"), // Escape TSV special chars
+                    );
+                }
+            }
+        }
+    } else {
+        // Fallback to placeholder data when debug info is not available
+        for sentence in sentences {
+            println!(
+                "{}\t{}\t({},{},{},{})\tplaceholder_state_before\tplaceholder_state_after\tplaceholder_transition_type\tplaceholder_pattern\tplaceholder_name\tplaceholder_seam",
+                sentence.index,
+                sentence.normalize(),
+                sentence.span.start_line,
+                sentence.span.start_col,
+                sentence.span.end_line,
+                sentence.span.end_col, // seam_text - placeholder
+            );
+        }
+    }
+}
+
+/// Process text in debug mode and output results to stdout
+/// WHY: Enables immediate debugging without creating temporary files
+async fn process_debug_mode(text: &str) -> Result<()> {
+    // Initialize detector
+    let detector = crate::sentence_detector::dialog_detector::SentenceDetectorDialog::new()
+        .map_err(|e| anyhow::anyhow!("Failed to initialize dialog sentence detector: {}", e))?;
+    
+    // Process with debug information
+    let (sentences, debug_info) = detector.detect_sentences_borrowed_with_debug(text)
+        .map_err(|e| anyhow::anyhow!("Sentence detection failed: {}", e))?;
+    
+    // Output debug information to stdout
+    write_debug_output_to_stdout(&sentences, Some(&debug_info));
+    
+    Ok(())
+}
+
 // Cache-based discovery logic removed - using fresh parallel discovery only
 
 // Functions moved to parallel_processing module
@@ -631,7 +731,7 @@ TROUBLESHOOTING:
 struct Args {
     /// Root directory to scan for *-0.txt files, or single file path
     #[arg(value_name = "PATH", help = "Directory to scan recursively for *-0.txt files, or single *-0.txt file to process")]
-    root_dir: PathBuf,
+    root_dir: Option<PathBuf>,
     
     /// Overwrite even complete aux files
     #[arg(long, help = "Reprocess all files, even those with complete _seams.txt files")]
@@ -666,6 +766,18 @@ struct Args {
     /// Calculate sentence length statistics (adds processing overhead)
     #[arg(long, help = "Calculate and display sentence length statistics (min, max, mean, median, percentiles)")]
     sentence_length_stats: bool,
+
+    /// Enable debug mode for SEAM detection (outputs _seams-debug.txt with state transitions)
+    #[arg(long, help = "Generate debug TSV files with state transition and pattern match details")]
+    debug_seams: bool,
+
+    /// Debug text input directly from command line
+    #[arg(long, help = "Debug sentence detection on provided text string (outputs to stdout)")]
+    debug_text: Option<String>,
+
+    /// Debug text input from standard input
+    #[arg(long, help = "Debug sentence detection on text from stdin (outputs to stdout)")]
+    debug_stdin: bool,
 }
 
 #[tokio::main]
@@ -680,32 +792,57 @@ async fn main() -> Result<()> {
     
     info!("Starting seams");
     info!(?args, "Parsed CLI arguments");
+
+    // Handle debug mode flags early - these bypass normal file processing
+    if args.debug_text.is_some() || args.debug_stdin {
+        if args.debug_text.is_some() && args.debug_stdin {
+            anyhow::bail!("Cannot use both --debug-text and --debug-stdin flags simultaneously");
+        }
+        
+        let text = if let Some(debug_text) = &args.debug_text {
+            debug_text.clone()
+        } else {
+            // Read from stdin
+            use tokio::io::{AsyncReadExt, stdin};
+            let mut buffer = String::new();
+            stdin().read_to_string(&mut buffer).await
+                .map_err(|e| anyhow::anyhow!("Failed to read from stdin: {}", e))?;
+            buffer
+        };
+        
+        return process_debug_mode(&text).await;
+    }
+
+    // Ensure root_dir is provided for normal processing
+    let root_dir = args.root_dir.as_ref().ok_or_else(|| {
+        anyhow::anyhow!("PATH argument is required when not using debug flags (--debug-text or --debug-stdin)")
+    })?;
     
     // WHY: validate root directory exists early to fail fast with clear error
-    if !args.root_dir.exists() {
+    if !root_dir.exists() {
         anyhow::bail!(
             "Directory not found: {}\n\nSUGGESTIONS:\n• Check the path spelling and try again\n• Ensure you have read permissions for the parent directory\n• Use an absolute path like '/home/user/gutenberg' if using relative paths",
-            args.root_dir.display()
+            root_dir.display()
         );
     }
     
     // Check if input is a file or directory
-    if args.root_dir.is_file() {
+    if root_dir.is_file() {
         // Single file mode
-        return process_single_file_mode(&args.root_dir, &args).await;
+        return process_single_file_mode(root_dir, &args).await;
     }
     
-    if !args.root_dir.is_dir() {
+    if !root_dir.is_dir() {
         anyhow::bail!(
             "Path exists but is neither a file nor a directory: {}\n\nSUGGESTIONS:\n• Provide a directory path to process multiple files\n• Provide a single *-0.txt file path to process one file\n• Example: seams /path/to/gutenberg-texts/ or seams /path/to/file-0.txt",
-            args.root_dir.display()
+            root_dir.display()
         );
     }
     
     info!("Project setup validation completed successfully");
     
     // WHY: Load restart log to track completed files
-    let mut restart_log = RestartLog::load(&args.root_dir).await;
+    let mut restart_log = RestartLog::load(root_dir).await;
     
     // WHY: Clear restart log if requested by user
     if args.clear_restart_log {
@@ -729,7 +866,7 @@ async fn main() -> Result<()> {
     
     // WHY: Use overlapped discovery and processing pipeline for optimal performance
     let (total_sentences, total_bytes, processed_files, skipped_files, failed_files, file_stats, processing_duration) = 
-        process_with_overlapped_pipeline(&args, &mut restart_log).await?;
+        process_with_overlapped_pipeline(root_dir, &args, &mut restart_log).await?;
     
     // WHY: Generate run statistics per PRD F-8 requirement
     let overall_chars_per_sec = if processing_duration.as_secs_f64() > 0.0 {

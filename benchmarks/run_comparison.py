@@ -26,7 +26,7 @@ def get_system_info() -> Dict[str, Any]:
         "architecture": platform.machine()
     }
 
-def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None, max_cpus: int = None, sentence_length_stats: bool = False) -> Dict[str, Any]:
+def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None, max_cpus: int = None, sentence_length_stats: bool = False, debug_seams: bool = False) -> Dict[str, Any]:
     """Run seams benchmark and extract results."""
     benchmark_start = time.time()
     
@@ -62,6 +62,8 @@ def run_seams_benchmark(root_dir: str, stats_file: str, max_files: int = None, m
         cmd.extend(["--max-cpus", str(max_cpus)])
     if sentence_length_stats:
         cmd.append("--sentence-length-stats")
+    if debug_seams:
+        cmd.append("--debug-seams")
     # Note: seams doesn't support --max-files yet, so it processes all files
     
     result = subprocess.run(
@@ -477,6 +479,7 @@ def main():
     parser.add_argument("--nupunkt-only", action="store_true", help="Run only nupunkt benchmark (skip seams and other tools)")
     parser.add_argument("--max-cpus", type=int, help="Maximum CPUs to use for seams benchmark")
     parser.add_argument("--sentence-length-stats", action="store_true", help="Calculate sentence length statistics (adds overhead but provides detailed analysis)")
+    parser.add_argument("--debug-seams", action="store_true", help="Enable debug mode for SEAM analysis (outputs _seams-debug.txt files)")
     
     args = parser.parse_args()
     
@@ -520,18 +523,18 @@ def main():
     elif getattr(args, 'seams_only', False):
         print("🔨 Running seams benchmark (seams-only mode)...")
         max_cpus = getattr(args, 'max_cpus', None)
-        seams_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json", args.max_files, max_cpus=max_cpus, sentence_length_stats=args.sentence_length_stats)
+        seams_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json", args.max_files, max_cpus=max_cpus, sentence_length_stats=args.sentence_length_stats, debug_seams=args.debug_seams)
         seams_result["tool"] = "seams"
         results.append(seams_result)
     else:
         # Run both single-CPU and default for comparison
         print("🔨 Running seams single-CPU benchmark...")
-        seams_single_result = run_seams_benchmark(args.root_dir, "seams_single_cpu_stats.json", args.max_files, max_cpus=1, sentence_length_stats=args.sentence_length_stats)
+        seams_single_result = run_seams_benchmark(args.root_dir, "seams_single_cpu_stats.json", args.max_files, max_cpus=1, sentence_length_stats=args.sentence_length_stats, debug_seams=args.debug_seams)
         seams_single_result["tool"] = "seams-single-cpu"  # Distinguish in results
         results.append(seams_single_result)
         
         print("🔨 Running seams default (multi-CPU) benchmark...")
-        seams_multi_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json", args.max_files, sentence_length_stats=args.sentence_length_stats)
+        seams_multi_result = run_seams_benchmark(args.root_dir, "seams_comparison_stats.json", args.max_files, sentence_length_stats=args.sentence_length_stats, debug_seams=args.debug_seams)
         seams_multi_result["tool"] = "seams"  # Keep original name
         results.append(seams_multi_result)
         

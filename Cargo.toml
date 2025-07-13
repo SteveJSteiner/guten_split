@@ -21,6 +21,9 @@ path = "src/lib.rs"
 
 [build-dependencies]
 anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.8"
+regex-automata = "0.4"
 
 [dependencies]
 tokio = { version = "1.0", features = ["full"] }
@@ -50,6 +53,7 @@ dotenvy = "0.15"
 default = []
 test-helpers = []
 debug-states = []
+table-driven-patterns = []
 
 
 

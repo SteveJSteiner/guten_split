@@ -60,6 +60,8 @@ pub async fn write_auxiliary_file_borrowed(
     aux_path: &Path,
     sentences: &[crate::sentence_detector::DetectedSentenceBorrowed<'_>],
     _detector: &crate::sentence_detector::dialog_detector::SentenceDetectorDialog,
+    debug_seams: bool,
+    debug_info: Option<&[crate::sentence_detector::dialog_detector::DebugTransitionInfo]>,
 ) -> Result<()> {
     let file = tokio::fs::File::create(aux_path).await
         .map_err(|e| anyhow::anyhow!(
@@ -95,6 +97,146 @@ pub async fn write_auxiliary_file_borrowed(
             "Cannot finalize output file: {}\nError: {}\n\nSUGGESTIONS:\n• Check available disk space\n• Ensure write permissions are maintained\n• File system may be full or read-only",
             aux_path.display(), e
         ))?;
+    
+    // Write debug file if debug mode is enabled
+    if debug_seams {
+        write_debug_file(aux_path, sentences, debug_info).await?;
+    }
+    
+    Ok(())
+}
+
+/// Write debug TSV file with state transition and pattern match details
+/// WHY: Enable debugging of SEAM detection by showing state transitions and pattern matches
+async fn write_debug_file(
+    aux_path: &Path,
+    sentences: &[crate::sentence_detector::DetectedSentenceBorrowed<'_>],
+    debug_info: Option<&[crate::sentence_detector::dialog_detector::DebugTransitionInfo]>,
+) -> Result<()> {
+    // Create debug file path by replacing _seams.txt with _seams-debug.txt
+    let debug_path = if let Some(parent) = aux_path.parent() {
+        if let Some(filename) = aux_path.file_name().and_then(|n| n.to_str()) {
+            if filename.ends_with("_seams.txt") {
+                let debug_filename = filename.replace("_seams.txt", "_seams-debug.txt");
+                parent.join(debug_filename)
+            } else {
+                // Fallback: add -debug before .txt
+                let debug_filename = filename.replace(".txt", "-debug.txt");
+                parent.join(debug_filename)
+            }
+        } else {
+            aux_path.with_extension("debug.txt")
+        }
+    } else {
+        aux_path.with_extension("debug.txt")
+    };
+    
+    let file = tokio::fs::File::create(&debug_path).await
+        .map_err(|e| anyhow::anyhow!(
+            "Cannot create debug output file: {}\nError: {}\n\nSUGGESTIONS:\n• Check write permissions for the directory\n• Ensure sufficient disk space is available\n• Verify the directory exists and is writable",
+            debug_path.display(), e
+        ))?;
+    let mut writer = BufWriter::new(file);
+    
+    // Write header for debug TSV
+    let header = "index\tsentence\tspan\tstate_before\tstate_after\ttransition_type\tmatched_pattern\tpattern_name\tseam_text\n";
+    writer.write_all(header.as_bytes()).await
+        .map_err(|e| anyhow::anyhow!(
+            "Cannot write debug header: {}\nError: {}",
+            debug_path.display(), e
+        ))?;
+    
+    if let Some(debug_transitions) = debug_info {
+        // Use real debug information when available
+        for (sentence_idx, sentence) in sentences.iter().enumerate() {
+            // Find debug transitions for this sentence
+            let sentence_transitions: Vec<_> = debug_transitions.iter()
+                .filter(|t| t.sentence_index == sentence_idx)
+                .collect();
+            
+            if sentence_transitions.is_empty() {
+                // No transitions found for this sentence - write placeholder
+                let debug_line = format!(
+                    "{}\t{}\t({},{},{},{})\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                    sentence.index,
+                    sentence.normalize(),
+                    sentence.span.start_line,
+                    sentence.span.start_col,
+                    sentence.span.end_line,
+                    sentence.span.end_col,
+                    "Unknown", // state_before
+                    "Unknown", // state_after
+                    "Unknown", // transition_type
+                    "no_pattern", // matched_pattern
+                    "no_pattern_name", // pattern_name
+                    "no_seam_text", // seam_text
+                );
+                
+                writer.write_all(debug_line.as_bytes()).await
+                    .map_err(|e| anyhow::anyhow!(
+                        "Cannot write debug line: {}\nError: {}",
+                        debug_path.display(), e
+                    ))?;
+            } else {
+                // Write all transitions for this sentence
+                for transition in sentence_transitions {
+                    let debug_line = format!(
+                        "{}\t{}\t({},{},{},{})\t{:?}\t{:?}\t{:?}\t{}\t{}\t{}\n",
+                        sentence.index,
+                        sentence.normalize(),
+                        sentence.span.start_line,
+                        sentence.span.start_col,
+                        sentence.span.end_line,
+                        sentence.span.end_col,
+                        transition.state_before,
+                        transition.state_after,
+                        transition.transition_type,
+                        transition.matched_pattern.replace('\n', "\\n").replace('\t', "\\t"), // Escape TSV special chars
+                        transition.pattern_name,
+                        transition.seam_text.replace('\n', "\\n").replace('\t', "\\t"), // Escape TSV special chars
+                    );
+                    
+                    writer.write_all(debug_line.as_bytes()).await
+                        .map_err(|e| anyhow::anyhow!(
+                            "Cannot write debug line: {}\nError: {}",
+                            debug_path.display(), e
+                        ))?;
+                }
+            }
+        }
+    } else {
+        // Fallback to placeholder data when debug info is not available
+        for sentence in sentences {
+            let debug_line = format!(
+                "{}\t{}\t({},{},{},{})\t{}\t{}\t{}\t{}\t{}\t{}\n",
+                sentence.index,
+                sentence.normalize(),
+                sentence.span.start_line,
+                sentence.span.start_col,
+                sentence.span.end_line,
+                sentence.span.end_col,
+                "placeholder_state_before", // state_before - placeholder
+                "placeholder_state_after", // state_after - placeholder
+                "placeholder_transition_type",     // transition_type - placeholder
+                "placeholder_pattern", // matched_pattern - placeholder
+                "placeholder_name",    // pattern_name - placeholder
+                "placeholder_seam",    // seam_text - placeholder
+            );
+            
+            writer.write_all(debug_line.as_bytes()).await
+                .map_err(|e| anyhow::anyhow!(
+                    "Cannot write debug line: {}\nError: {}",
+                    debug_path.display(), e
+                ))?;
+        }
+    }
+    
+    writer.flush().await
+        .map_err(|e| anyhow::anyhow!(
+            "Cannot finalize debug file: {}\nError: {}",
+            debug_path.display(), e
+        ))?;
+    
     Ok(())
 }
 
