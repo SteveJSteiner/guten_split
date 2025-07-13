@@ -969,6 +969,21 @@ fn test_sentence_ending_punctuation_after_dialog_three_sentence_expectation() {
 }
 
 #[test]
+fn test_simple_hard_separator_continue_bug() {
+    let detector = get_detector();
+    
+    // Test case: reproduce the exact bug from your data
+    // After hard separator, comma+quote pattern should Split, not Continue
+    let text = "Text that was forfeited.\n\n\"No, dearest,\" he said with thoughts, \"Not yet.\"";
+    
+    let sentences = detector.detect_sentences_borrowed(text).unwrap();
+    
+    // Expected: should get Split for hard separator, not Continue for quote
+    // This test demonstrates the fix where hard separator analysis works correctly
+    assert_eq!(sentences.len(), 2, "Should create 2 sentences");
+}
+
+#[test]
 fn test_dialog_pattern_partitioning_comprehensive() {
     let detector = get_detector();
     

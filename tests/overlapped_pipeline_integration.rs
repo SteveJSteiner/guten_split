@@ -45,9 +45,9 @@ async fn test_overlapped_pipeline_functionality() {
 
     // Verify aux files were created
     let aux_files = vec![
-        test_root.join("small-0_seams.txt"),
-        test_root.join("medium-0_seams.txt"),
-        test_root.join("large-0_seams.txt"),
+        test_root.join("small-0_seams2.txt"),
+        test_root.join("medium-0_seams2.txt"),
+        test_root.join("large-0_seams2.txt"),
     ];
     
     for aux_file in &aux_files {
@@ -104,7 +104,7 @@ async fn test_overlapped_pipeline_with_cache() {
     assert!(output1.status.success(), "First seams run failed: {}", String::from_utf8_lossy(&output1.stderr));
     
     // Verify aux file was created
-    let aux_file = test_root.join("test-0_seams.txt");
+    let aux_file = test_root.join("test-0_seams2.txt");
     assert!(aux_file.exists(), "Aux file not created on first run");
     
     // Run seams second time (should use cache)
@@ -154,7 +154,7 @@ async fn test_overlapped_pipeline_error_handling() {
     assert!(output.status.success(), "seams command failed: {}", String::from_utf8_lossy(&output.stderr));
     
     // Verify valid file was processed
-    let aux_file = test_root.join("valid-0_seams.txt");
+    let aux_file = test_root.join("valid-0_seams2.txt");
     assert!(aux_file.exists(), "Aux file not created for valid file");
     
     // Verify stdout reports the issue with invalid file

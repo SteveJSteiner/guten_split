@@ -181,7 +181,7 @@ async fn test_parallel_discovery_with_overlapped_pipeline() {
     let mut aux_files_count = 0;
     for entry in fs::read_dir(test_root).unwrap() {
         let entry = entry.unwrap();
-        if entry.file_name().to_string_lossy().ends_with("_seams.txt") {
+        if entry.file_name().to_string_lossy().ends_with("_seams2.txt") {
             aux_files_count += 1;
         }
     }
