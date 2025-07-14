@@ -1141,3 +1141,207 @@ fn test_dialog_pattern_partitioning_comprehensive() {
         // Note: Some edge cases may currently fail - document which ones work vs fail
     }
 }
+
+#[test]
+fn test_dialog_comma_capital_continuation_bug() {
+    let detector = get_detector();
+    
+    // Test the specific failing case from the task
+    let failing_case = r#""Right," I told him, condescendingly."#;
+    let sentences = detector.detect_sentences_borrowed(failing_case).unwrap();
+    
+    // EXPECTED: Should be one sentence (continuation after comma)
+    // ACTUAL BUG: Incorrectly splits at capital 'I' despite comma continuation
+    assert_eq!(sentences.len(), 1, 
+        "Dialog with comma + capital should continue as one sentence\nExpected: 1 sentence\nActual: {} sentences\nSentences: {:?}",
+        sentences.len(),
+        sentences.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+    
+    // Verify the full sentence content is preserved
+    assert!(sentences[0].raw_content.contains("Right,"));
+    assert!(sentences[0].raw_content.contains("I told him"));
+    assert!(sentences[0].raw_content.contains("condescendingly"));
+}
+
+#[test]
+fn test_dialog_comma_capital_continuation_bug_with_context() {
+    let detector = get_detector();
+    
+    // Test the case with narrative context - this should demonstrate the actual bug
+    let failing_case_with_context = r#"He said "Right," I told him, condescendingly."#;
+    let sentences = detector.detect_sentences_borrowed(failing_case_with_context).unwrap();
+    
+    // BUG: This incorrectly splits into 2 sentences instead of 1
+    // The comma after "Right," should signal continuation, not split
+    println!("Context test: {} sentences", sentences.len());
+    for (i, sentence) in sentences.iter().enumerate() {
+        println!("  {}: '{}'", i + 1, sentence.raw_content.trim());
+    }
+    
+    // This assertion will fail, demonstrating the bug
+    // When fixed, this should pass
+    assert_eq!(sentences.len(), 1, 
+        "Dialog with comma continuation should be one sentence\nExpected: 1 sentence\nActual: {} sentences\nSentences: {:?}",
+        sentences.len(),
+        sentences.iter().map(|s| s.normalize().trim().to_string()).collect::<Vec<_>>());
+}
+
+#[test]
+fn test_dialog_continuation_punctuation_variations() {
+    let detector = get_detector();
+    
+    // Test all continuation punctuation types mentioned in SEAMS-Design.md
+    let test_cases = [
+        // Comma continuation (the main bug case)
+        (r#""Right," I told him, condescendingly."#, 1, "Comma continuation"),
+        (r#""Hello," she said quietly."#, 1, "Comma continuation - basic"),
+        (r#""Wait," he whispered urgently."#, 1, "Comma continuation - urgent"),
+        
+        // Semicolon continuation
+        (r#""Maybe;" I thought about it."#, 1, "Semicolon continuation"),
+        (r#""Yes;" she nodded slowly."#, 1, "Semicolon continuation - basic"),
+        
+        // Colon continuation
+        (r#""Listen:" I have something important."#, 1, "Colon continuation"),
+        (r#""Note:" she wrote it down."#, 1, "Colon continuation - basic"),
+        
+        // Multiple continuation punctuation in sequence
+        (r#""First," he said, "then," she replied."#, 1, "Multiple comma continuations"),
+        
+        // Mixed quote types with continuation
+        (r#"'Right,' I told him, condescendingly."#, 1, "Single quote comma continuation"),
+        (r#""Yes," then 'No,' I decided."#, 1, "Mixed quote types with continuation"),
+    ];
+    
+    for (text, expected_sentences, description) in test_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        
+        println!("Testing {}: {} sentences (expected {})", description, sentences.len(), expected_sentences);
+        println!("  Text: '{}'", text);
+        for (i, sentence) in sentences.iter().enumerate() {
+            println!("    {}: '{}'", i + 1, sentence.raw_content.trim());
+        }
+        
+        // These tests may currently fail - that's expected until the bug is fixed
+        if sentences.len() != expected_sentences {
+            println!("  ❌ FAILING (expected bug): Expected {}, got {}", expected_sentences, sentences.len());
+        } else {
+            println!("  ✅ PASSING");
+        }
+        println!();
+    }
+}
+
+#[test]
+fn test_dialog_continuation_vs_boundary_distinction() {
+    let detector = get_detector();
+    
+    // Test cases that should CONTINUE (not split) vs those that should SPLIT
+    let continuation_cases = [
+        // These should continue - continuation punctuation overrides capital letters
+        (r#""Right," I told him."#, 1, "Comma + capital should continue"),
+        (r#""Maybe;" I thought about it."#, 1, "Semicolon + capital should continue"),
+        (r#""Listen:" I have news."#, 1, "Colon + capital should continue"),
+        (r#""Well," Mary said, "I think so.""#, 1, "Comma + capital + continuing dialog"),
+        
+        // Edge cases with whitespace
+        (r#""Right,"  I told him."#, 1, "Comma + multiple spaces + capital"),
+        (r#""Right,"\tI told him."#, 1, "Comma + tab + capital"),
+        (r#""Right,"\nI told him."#, 1, "Comma + newline + capital"),
+    ];
+    
+    let boundary_cases = [
+        // These should split - hard punctuation creates sentence boundaries
+        (r#""Stop!" I shouted loudly."#, 2, "Exclamation + capital should split"),
+        (r#""Really?" I asked curiously."#, 2, "Question + capital should split"),
+        (r#""Done." I finished the task."#, 2, "Period + capital should split"),
+        (r#""Wait!" Then I realized."#, 2, "Exclamation + 'Then' should split"),
+        
+        // Control cases - no dialog
+        ("I told him something. Then I left.", 2, "Normal narrative sentences"),
+        ("Right, I told him. Then I left.", 2, "Comma in narrative + new sentence"),
+    ];
+    
+    println!("=== Testing Continuation Cases (should NOT split) ===");
+    for (text, expected, description) in continuation_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        println!("  Text: '{}'", text);
+        
+        if sentences.len() != expected {
+            println!("  ❌ BUG: Expected {}, got {} - continuation punctuation should prevent split", expected, sentences.len());
+        } else {
+            println!("  ✅ CORRECT: Continuation punctuation prevents split");
+        }
+        println!();
+    }
+    
+    println!("=== Testing Boundary Cases (should split) ===");
+    for (text, expected, description) in boundary_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        println!("  Text: '{}'", text);
+        
+        if sentences.len() != expected {
+            println!("  ❌ ISSUE: Expected {}, got {} - hard punctuation should create split", expected, sentences.len());
+        } else {
+            println!("  ✅ CORRECT: Hard punctuation creates split");
+        }
+        println!();
+    }
+}
+
+#[test]
+fn test_dialog_state_machine_continuation_logic() {
+    let detector = get_detector();
+    
+    // Test the state machine logic from SEAMS-Design.md:
+    // {close}{cont_punct} + space + Any → D→N Continue
+    
+    let state_machine_cases = [
+        // Pattern: {close}{cont_punct} + space + Any → Continue
+        (r#""word", text"#, 1, "Quote close + comma + space + text"),
+        (r#""word"; text"#, 1, "Quote close + semicolon + space + text"),
+        (r#""word": text"#, 1, "Quote close + colon + space + text"),
+        (r#"'word', text"#, 1, "Single quote close + comma + space + text"),
+        (r#"(word), text"#, 1, "Paren close + comma + space + text"),
+        (r#"[word], text"#, 1, "Bracket close + comma + space + text"),
+        
+        // Pattern: {close}{cont_punct} + space + Capital → Continue (the bug case)
+        (r#""word", Capital"#, 1, "Quote close + comma + space + Capital"),
+        (r#""word"; Capital"#, 1, "Quote close + semicolon + space + Capital"),
+        (r#""word": Capital"#, 1, "Quote close + colon + space + Capital"),
+        
+        // Pattern: {close}{hard_punct} + space + Any → Split
+        (r#""word"! Next"#, 2, "Quote close + exclamation + space + next"),
+        (r#""word"? Next"#, 2, "Quote close + question + space + next"),
+        (r#""word". Next"#, 2, "Quote close + period + space + next"),
+        
+        // Edge case: no space after continuation punctuation
+        (r#""word",text"#, 1, "Quote close + comma + no space + text"),
+        (r#""word":text"#, 1, "Quote close + colon + no space + text"),
+        
+        // Complex case: multiple continuation punctuation
+        (r#""first", "second", text"#, 1, "Multiple comma continuations"),
+        
+        // Real-world example from the task
+        (r#""Right," I told him, condescendingly."#, 1, "Task example - comma continuation"),
+    ];
+    
+    println!("=== Testing State Machine Continuation Logic ===");
+    for (text, expected, description) in state_machine_cases {
+        let sentences = detector.detect_sentences_borrowed(text).unwrap();
+        println!("{}: {} sentences (expected {})", description, sentences.len(), expected);
+        println!("  Text: '{}'", text);
+        
+        if sentences.len() != expected {
+            println!("  ❌ STATE MACHINE BUG: Expected {}, got {}", expected, sentences.len());
+            for (i, sentence) in sentences.iter().enumerate() {
+                println!("    Sentence {}: '{}'", i + 1, sentence.raw_content.trim());
+            }
+        } else {
+            println!("  ✅ STATE MACHINE CORRECT");
+        }
+        println!();
+    }
+}

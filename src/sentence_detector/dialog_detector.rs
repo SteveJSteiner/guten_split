@@ -461,9 +461,15 @@ impl DialogStateMachine {
         let dialog_double_to_dialog_hard = format!("{double_quote_close}({soft_separator}){dialog_open_chars}{non_dialog_sentence_start_chars}");  // " (The
         let dialog_double_to_dialog_soft = format!("{double_quote_close}({soft_separator}){dialog_open_chars}{not_non_dialog_sentence_start_chars}");  // " (note
         
-        // COMPLETE COVERAGE: Add missing unpunctuated exit patterns
-        let dialog_double_unpunctuated_hard_end = format!("{double_quote_close}({soft_separator}){non_dialog_sentence_start_chars}");  // " The
-        let dialog_double_unpunctuated_soft_end = format!("{double_quote_close}({soft_separator}){not_all_sentence_start_chars}");  // " the
+        // CONTINUATION PUNCTUATION PATTERNS: Handle continuation punctuation before and after close
+        // Pattern: continuation_punct + close + space + any → Continue (before close)
+        let dialog_double_continuation_before_end = format!("{non_sentence_ending_punct}{double_quote_close}({soft_separator}){unified_sentence_start_chars}");  // ," The
+        // Pattern: close + continuation_punct + space + any → Continue (after close)  
+        let dialog_double_continuation_after_end = format!("{double_quote_close}{non_sentence_ending_punct}({soft_separator}){unified_sentence_start_chars}");  // ", The
+        
+        // UNPUNCTUATED PATTERNS: No continuation punctuation → Split
+        let dialog_double_unpunctuated_split_end = format!("{double_quote_close}({soft_separator}){non_dialog_sentence_start_chars}");  // " The
+        let dialog_double_unpunctuated_continue_end = format!("{double_quote_close}({soft_separator}){not_all_sentence_start_chars}");  // " the
         
         // NARRATIVE STATE - Mutually exclusive patterns
         let narrative_patterns = vec![
@@ -554,8 +560,10 @@ impl DialogStateMachine {
             dialog_double_to_dialog_soft.as_str(),        // PatternID 4 = Dialog->Dialog WITHOUT sentence boundary (e.g., " (note)
             dialog_hard_double_end.as_str(),              // PatternID 5 = punctuated sentence boundary
             dialog_soft_double_end.as_str(),              // PatternID 6 = punctuated continue sentence
-            dialog_double_unpunctuated_hard_end.as_str(), // PatternID 7 = unpunctuated sentence boundary  
-            dialog_double_unpunctuated_soft_end.as_str(), // PatternID 8 = unpunctuated continue sentence
+            dialog_double_continuation_before_end.as_str(), // PatternID 7 = continuation punct before close → Continue
+            dialog_double_continuation_after_end.as_str(), // PatternID 8 = continuation punct after close → Continue
+            dialog_double_unpunctuated_split_end.as_str(), // PatternID 9 = unpunctuated sentence boundary  
+            dialog_double_unpunctuated_continue_end.as_str(), // PatternID 10 = unpunctuated continue sentence
         ];
         let dialog_double_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),        // PatternID 0 - hard sep + dialog opener
@@ -565,8 +573,10 @@ impl DialogStateMachine {
             (MatchType::DialogOpen, DialogState::Unknown),           // PatternID 4 - Dialog->Dialog soft transition (determine target state from consumed char)
             (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 5 - punctuated hard dialog end
             (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 6 - punctuated soft dialog end
-            (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 7 - unpunctuated hard dialog end
-            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 8 - unpunctuated soft dialog end
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 7 - continuation punct before close → Continue
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 8 - continuation punct after close → Continue
+            (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 9 - unpunctuated sentence boundary  
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 10 - unpunctuated continue sentence
         ];
         state_patterns.insert(DialogState::DialogDoubleQuote, Regex::new_many(&dialog_double_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogDoubleQuote, dialog_double_mappings);
@@ -574,8 +584,14 @@ impl DialogStateMachine {
         // DIALOG SINGLE QUOTE STATE - Similar structure
         let dialog_hard_single_end = format!("{sentence_end_punct}{single_quote_close}({soft_separator}){unified_sentence_start_chars}");  // .' The or .' (
         let dialog_soft_single_end = format!("{sentence_end_punct}{single_quote_close}({soft_separator}){not_all_sentence_start_chars}");  // .' the
-        let dialog_single_unpunctuated_hard_end = format!("{single_quote_close}({soft_separator}){unified_sentence_start_chars}");  // ' The or ' (
-        let dialog_single_unpunctuated_soft_end = format!("{single_quote_close}({soft_separator}){not_all_sentence_start_chars}");
+        
+        // CONTINUATION PUNCTUATION PATTERNS for single quotes
+        let dialog_single_continuation_before_end = format!("{non_sentence_ending_punct}{single_quote_close}({soft_separator}){unified_sentence_start_chars}");  // ,' The
+        let dialog_single_continuation_after_end = format!("{single_quote_close}{non_sentence_ending_punct}({soft_separator}){unified_sentence_start_chars}");  // ', The
+        
+        // UNPUNCTUATED PATTERNS for single quotes
+        let dialog_single_unpunctuated_split_end = format!("{single_quote_close}({soft_separator}){unified_sentence_start_chars}");  // ' The or ' (
+        let dialog_single_unpunctuated_continue_end = format!("{single_quote_close}({soft_separator}){not_all_sentence_start_chars}");
         
         let dialog_single_patterns = vec![
             hard_sep_dialog_start.as_str(),               // PatternID 0 = hard sep + dialog opener
@@ -583,8 +599,10 @@ impl DialogStateMachine {
             hard_sep_eof.as_str(),                        // PatternID 2 = hard sep + EOF
             dialog_hard_single_end.as_str(),              // PatternID 3 = punctuated sentence boundary
             dialog_soft_single_end.as_str(),              // PatternID 4 = punctuated continue sentence
-            dialog_single_unpunctuated_hard_end.as_str(), // PatternID 5 = unpunctuated sentence boundary
-            dialog_single_unpunctuated_soft_end.as_str(), // PatternID 6 = unpunctuated continue sentence
+            dialog_single_continuation_before_end.as_str(), // PatternID 5 = continuation punct before close → Continue
+            dialog_single_continuation_after_end.as_str(), // PatternID 6 = continuation punct after close → Continue
+            dialog_single_unpunctuated_split_end.as_str(), // PatternID 7 = unpunctuated sentence boundary
+            dialog_single_unpunctuated_continue_end.as_str(), // PatternID 8 = unpunctuated continue sentence
         ];
         let dialog_single_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),        // PatternID 0 - hard sep + dialog opener
@@ -592,8 +610,10 @@ impl DialogStateMachine {
             (MatchType::HardSeparator, DialogState::Narrative),      // PatternID 2 - hard sep + EOF
             (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 3 - punctuated hard dialog end
             (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 4 - punctuated soft dialog end
-            (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 5 - unpunctuated hard dialog end
-            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 6 - unpunctuated soft dialog end
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 5 - continuation punct before close → Continue
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 6 - continuation punct after close → Continue
+            (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 7 - unpunctuated sentence boundary
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 8 - unpunctuated continue sentence
         ];
         state_patterns.insert(DialogState::DialogSingleQuote, Regex::new_many(&dialog_single_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogSingleQuote, dialog_single_mappings);
@@ -602,12 +622,24 @@ impl DialogStateMachine {
         let dialog_hard_smart_double_end = format!("{sentence_end_punct}{smart_double_close}({soft_separator}){unified_sentence_start_chars}");  // ." The or ." (
         let dialog_soft_smart_double_end = format!("{sentence_end_punct}{smart_double_close}({soft_separator}){not_all_sentence_start_chars}");
         
+        // CONTINUATION PUNCTUATION PATTERNS for smart double quotes
+        let dialog_smart_double_continuation_before_end = format!("{non_sentence_ending_punct}{smart_double_close}({soft_separator}){unified_sentence_start_chars}");  // ," The
+        let dialog_smart_double_continuation_after_end = format!("{smart_double_close}{non_sentence_ending_punct}({soft_separator}){unified_sentence_start_chars}");  // ", The
+        
+        // UNPUNCTUATED PATTERNS for smart double quotes
+        let dialog_smart_double_unpunctuated_split_end = format!("{smart_double_close}({soft_separator}){unified_sentence_start_chars}");  // " The
+        let dialog_smart_double_unpunctuated_continue_end = format!("{smart_double_close}({soft_separator}){not_all_sentence_start_chars}");
+        
         let dialog_smart_double_patterns = vec![
             hard_sep_dialog_start.as_str(),               // PatternID 0 = hard sep + dialog opener
             hard_sep_narrative_start.as_str(),            // PatternID 1 = hard sep + narrative char
             hard_sep_eof.as_str(),                        // PatternID 2 = hard sep + EOF
             dialog_hard_smart_double_end.as_str(),        // PatternID 3 = punctuated sentence boundary
             dialog_soft_smart_double_end.as_str(),        // PatternID 4 = punctuated continue sentence
+            dialog_smart_double_continuation_before_end.as_str(), // PatternID 5 = continuation punct before close → Continue
+            dialog_smart_double_continuation_after_end.as_str(), // PatternID 6 = continuation punct after close → Continue
+            dialog_smart_double_unpunctuated_split_end.as_str(), // PatternID 7 = unpunctuated sentence boundary
+            dialog_smart_double_unpunctuated_continue_end.as_str(), // PatternID 8 = unpunctuated continue sentence
         ];
         let dialog_smart_double_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),        // PatternID 0 - hard sep + dialog opener
@@ -615,6 +647,10 @@ impl DialogStateMachine {
             (MatchType::HardSeparator, DialogState::Narrative),      // PatternID 2 - hard sep + EOF
             (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 3 - punctuated hard dialog end
             (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 4 - punctuated soft dialog end
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 5 - continuation punct before close → Continue
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 6 - continuation punct after close → Continue
+            (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 7 - unpunctuated sentence boundary
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 8 - unpunctuated continue sentence
         ];
         state_patterns.insert(DialogState::DialogSmartDoubleOpen, Regex::new_many(&dialog_smart_double_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogSmartDoubleOpen, dialog_smart_double_mappings);
@@ -623,12 +659,24 @@ impl DialogStateMachine {
         let dialog_hard_smart_single_end = format!("{sentence_end_punct}{smart_single_close}({soft_separator}){unified_sentence_start_chars}");  // .' The or .' (
         let dialog_soft_smart_single_end = format!("{sentence_end_punct}{smart_single_close}({soft_separator}){not_all_sentence_start_chars}");
         
+        // CONTINUATION PUNCTUATION PATTERNS for smart single quotes
+        let dialog_smart_single_continuation_before_end = format!("{non_sentence_ending_punct}{smart_single_close}({soft_separator}){unified_sentence_start_chars}");  // ,' The
+        let dialog_smart_single_continuation_after_end = format!("{smart_single_close}{non_sentence_ending_punct}({soft_separator}){unified_sentence_start_chars}");  // ', The
+        
+        // UNPUNCTUATED PATTERNS for smart single quotes
+        let dialog_smart_single_unpunctuated_split_end = format!("{smart_single_close}({soft_separator}){unified_sentence_start_chars}");  // ' The
+        let dialog_smart_single_unpunctuated_continue_end = format!("{smart_single_close}({soft_separator}){not_all_sentence_start_chars}");
+        
         let dialog_smart_single_patterns = vec![
             hard_sep_dialog_start.as_str(),               // PatternID 0 = hard sep + dialog opener
             hard_sep_narrative_start.as_str(),            // PatternID 1 = hard sep + narrative char
             hard_sep_eof.as_str(),                        // PatternID 2 = hard sep + EOF
             dialog_hard_smart_single_end.as_str(),        // PatternID 3 = punctuated sentence boundary
             dialog_soft_smart_single_end.as_str(),        // PatternID 4 = punctuated continue sentence
+            dialog_smart_single_continuation_before_end.as_str(), // PatternID 5 = continuation punct before close → Continue
+            dialog_smart_single_continuation_after_end.as_str(), // PatternID 6 = continuation punct after close → Continue
+            dialog_smart_single_unpunctuated_split_end.as_str(), // PatternID 7 = unpunctuated sentence boundary
+            dialog_smart_single_unpunctuated_continue_end.as_str(), // PatternID 8 = unpunctuated continue sentence
         ];
         let dialog_smart_single_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),        // PatternID 0 - hard sep + dialog opener
@@ -636,6 +684,10 @@ impl DialogStateMachine {
             (MatchType::HardSeparator, DialogState::Narrative),      // PatternID 2 - hard sep + EOF
             (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 3 - punctuated hard dialog end
             (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 4 - punctuated soft dialog end
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 5 - continuation punct before close → Continue
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 6 - continuation punct after close → Continue
+            (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 7 - unpunctuated sentence boundary
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 8 - unpunctuated continue sentence
         ];
         state_patterns.insert(DialogState::DialogSmartSingleOpen, Regex::new_many(&dialog_smart_single_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogSmartSingleOpen, dialog_smart_single_mappings);
@@ -644,10 +696,19 @@ impl DialogStateMachine {
         // WHY: Patterns match ) followed by punctuation outside the parentheses, then optional space and next sentence start
         let dialog_hard_paren_round_end = format!("{round_paren_close}{sentence_end_punct}({soft_separator}){unified_sentence_start_chars}");  // ). The or ). (
         let dialog_soft_paren_round_end = format!("{round_paren_close}{sentence_end_punct}({soft_separator}){not_all_sentence_start_chars}");
-        // WHY: Handle parenthetical closures with non-sentence punctuation (semicolon, comma, etc.)
+        
+        // CONTINUATION PUNCTUATION PATTERNS for round parentheses
+        // Pattern: continuation_punct + close + space + any → Continue (before close)
+        let dialog_paren_round_continuation_before_end = format!("{non_sentence_ending_punct}{round_paren_close}({soft_separator}){unified_sentence_start_chars}");  // ,) The
+        // WHY: Handle parenthetical closures with non-sentence punctuation (semicolon, comma, etc.) after close
         let dialog_paren_round_non_sentence_punct = format!("{round_paren_close}({non_sentence_ending_punct})");
+        // Pattern: close + continuation_punct + space + any → Continue (after close)
+        let dialog_paren_round_continuation_after_end = format!("{round_paren_close}{non_sentence_ending_punct}({soft_separator}){unified_sentence_start_chars}");  // ), The
+        
+        // UNPUNCTUATED PATTERNS for round parentheses
         // WHY: Handle simple parenthetical closures without any punctuation (continuation patterns)
-        let dialog_paren_round_continue = format!("{round_paren_close}({soft_separator})");
+        let dialog_paren_round_unpunctuated_split_end = format!("{round_paren_close}({soft_separator}){unified_sentence_start_chars}");  // ) The
+        let dialog_paren_round_unpunctuated_continue_end = format!("{round_paren_close}({soft_separator}){not_all_sentence_start_chars}");
         
         let dialog_paren_round_patterns = vec![
             hard_sep_dialog_start.as_str(),               // PatternID 0 = hard sep + dialog opener
@@ -655,8 +716,11 @@ impl DialogStateMachine {
             hard_sep_eof.as_str(),                        // PatternID 2 = hard sep + EOF
             dialog_hard_paren_round_end.as_str(),         // PatternID 3 = punctuated sentence boundary
             dialog_soft_paren_round_end.as_str(),         // PatternID 4 = punctuated continue sentence
-            dialog_paren_round_non_sentence_punct.as_str(), // PatternID 5 = non-sentence punctuation
-            dialog_paren_round_continue.as_str(),         // PatternID 6 = simple continuation
+            dialog_paren_round_continuation_before_end.as_str(), // PatternID 5 = continuation punct before close → Continue
+            dialog_paren_round_non_sentence_punct.as_str(), // PatternID 6 = non-sentence punctuation after close (legacy)
+            dialog_paren_round_continuation_after_end.as_str(), // PatternID 7 = continuation punct after close → Continue
+            dialog_paren_round_unpunctuated_split_end.as_str(), // PatternID 8 = unpunctuated sentence boundary
+            dialog_paren_round_unpunctuated_continue_end.as_str(), // PatternID 9 = unpunctuated continue sentence
         ];
         let dialog_paren_round_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),        // PatternID 0 - hard sep + dialog opener
@@ -664,8 +728,11 @@ impl DialogStateMachine {
             (MatchType::HardSeparator, DialogState::Narrative),      // PatternID 2 - hard sep + EOF
             (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 3 - punctuated hard dialog end
             (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 4 - punctuated soft dialog end
-            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 5 - non-sentence punctuation, no boundary
-            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 6 - simple continuation, no boundary
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 5 - continuation punct before close → Continue
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 6 - non-sentence punctuation after close (legacy)
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 7 - continuation punct after close → Continue
+            (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 8 - unpunctuated sentence boundary
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 9 - unpunctuated continue sentence
         ];
         state_patterns.insert(DialogState::DialogParenthheticalRound, Regex::new_many(&dialog_paren_round_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogParenthheticalRound, dialog_paren_round_mappings);
@@ -674,12 +741,24 @@ impl DialogStateMachine {
         let dialog_hard_paren_square_end = format!("{sentence_end_punct}{square_bracket_close}({soft_separator}){unified_sentence_start_chars}");  // .] The or .] (
         let dialog_soft_paren_square_end = format!("{sentence_end_punct}{square_bracket_close}({soft_separator}){not_all_sentence_start_chars}");
         
+        // CONTINUATION PUNCTUATION PATTERNS for square brackets
+        let dialog_paren_square_continuation_before_end = format!("{non_sentence_ending_punct}{square_bracket_close}({soft_separator}){unified_sentence_start_chars}");  // ,] The
+        let dialog_paren_square_continuation_after_end = format!("{square_bracket_close}{non_sentence_ending_punct}({soft_separator}){unified_sentence_start_chars}");  // ], The
+        
+        // UNPUNCTUATED PATTERNS for square brackets
+        let dialog_paren_square_unpunctuated_split_end = format!("{square_bracket_close}({soft_separator}){unified_sentence_start_chars}");  // ] The
+        let dialog_paren_square_unpunctuated_continue_end = format!("{square_bracket_close}({soft_separator}){not_all_sentence_start_chars}");
+        
         let dialog_paren_square_patterns = vec![
             hard_sep_dialog_start.as_str(),               // PatternID 0 = hard sep + dialog opener
             hard_sep_narrative_start.as_str(),            // PatternID 1 = hard sep + narrative char
             hard_sep_eof.as_str(),                        // PatternID 2 = hard sep + EOF
             dialog_hard_paren_square_end.as_str(),        // PatternID 3 = punctuated sentence boundary
             dialog_soft_paren_square_end.as_str(),        // PatternID 4 = punctuated continue sentence
+            dialog_paren_square_continuation_before_end.as_str(), // PatternID 5 = continuation punct before close → Continue
+            dialog_paren_square_continuation_after_end.as_str(), // PatternID 6 = continuation punct after close → Continue
+            dialog_paren_square_unpunctuated_split_end.as_str(), // PatternID 7 = unpunctuated sentence boundary
+            dialog_paren_square_unpunctuated_continue_end.as_str(), // PatternID 8 = unpunctuated continue sentence
         ];
         let dialog_paren_square_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),        // PatternID 0 - hard sep + dialog opener
@@ -687,6 +766,10 @@ impl DialogStateMachine {
             (MatchType::HardSeparator, DialogState::Narrative),      // PatternID 2 - hard sep + EOF
             (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 3 - punctuated hard dialog end
             (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 4 - punctuated soft dialog end
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 5 - continuation punct before close → Continue
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 6 - continuation punct after close → Continue
+            (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 7 - unpunctuated sentence boundary
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 8 - unpunctuated continue sentence
         ];
         state_patterns.insert(DialogState::DialogParenthheticalSquare, Regex::new_many(&dialog_paren_square_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogParenthheticalSquare, dialog_paren_square_mappings);
@@ -695,12 +778,24 @@ impl DialogStateMachine {
         let dialog_hard_paren_curly_end = format!("{sentence_end_punct}{curly_brace_close}({soft_separator}){unified_sentence_start_chars}");  // .} The or .} (
         let dialog_soft_paren_curly_end = format!("{sentence_end_punct}{curly_brace_close}({soft_separator}){not_all_sentence_start_chars}");
         
+        // CONTINUATION PUNCTUATION PATTERNS for curly braces
+        let dialog_paren_curly_continuation_before_end = format!("{non_sentence_ending_punct}{curly_brace_close}({soft_separator}){unified_sentence_start_chars}");  // ,} The
+        let dialog_paren_curly_continuation_after_end = format!("{curly_brace_close}{non_sentence_ending_punct}({soft_separator}){unified_sentence_start_chars}");  // }, The
+        
+        // UNPUNCTUATED PATTERNS for curly braces
+        let dialog_paren_curly_unpunctuated_split_end = format!("{curly_brace_close}({soft_separator}){unified_sentence_start_chars}");  // } The
+        let dialog_paren_curly_unpunctuated_continue_end = format!("{curly_brace_close}({soft_separator}){not_all_sentence_start_chars}");
+        
         let dialog_paren_curly_patterns = vec![
             hard_sep_dialog_start.as_str(),               // PatternID 0 = hard sep + dialog opener
             hard_sep_narrative_start.as_str(),            // PatternID 1 = hard sep + narrative char
             hard_sep_eof.as_str(),                        // PatternID 2 = hard sep + EOF
             dialog_hard_paren_curly_end.as_str(),         // PatternID 3 = punctuated sentence boundary
             dialog_soft_paren_curly_end.as_str(),         // PatternID 4 = punctuated continue sentence
+            dialog_paren_curly_continuation_before_end.as_str(), // PatternID 5 = continuation punct before close → Continue
+            dialog_paren_curly_continuation_after_end.as_str(), // PatternID 6 = continuation punct after close → Continue
+            dialog_paren_curly_unpunctuated_split_end.as_str(), // PatternID 7 = unpunctuated sentence boundary
+            dialog_paren_curly_unpunctuated_continue_end.as_str(), // PatternID 8 = unpunctuated continue sentence
         ];
         let dialog_paren_curly_mappings = vec![
             (MatchType::HardSeparator, DialogState::Unknown),        // PatternID 0 - hard sep + dialog opener
@@ -708,6 +803,10 @@ impl DialogStateMachine {
             (MatchType::HardSeparator, DialogState::Narrative),      // PatternID 2 - hard sep + EOF
             (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 3 - punctuated hard dialog end
             (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 4 - punctuated soft dialog end
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 5 - continuation punct before close → Continue
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 6 - continuation punct after close → Continue
+            (MatchType::DialogEnd, DialogState::Narrative),          // PatternID 7 - unpunctuated sentence boundary
+            (MatchType::DialogSoftEnd, DialogState::Narrative),      // PatternID 8 - unpunctuated continue sentence
         ];
         state_patterns.insert(DialogState::DialogParenthheticalCurly, Regex::new_many(&dialog_paren_curly_patterns)?);
         state_pattern_mappings.insert(DialogState::DialogParenthheticalCurly, dialog_paren_curly_mappings);
