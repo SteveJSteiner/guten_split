@@ -94,9 +94,13 @@ seams ~/gutenberg_mirror
 seams --overwrite-all ~/gutenberg_texts
 ```
 
-**Single-threaded benchmark:**
+**Run benchmark comparison:**
 ```bash
-seams --max-cpus 1 ~/test_corpus
+cd benchmarks
+uv venv                                    # One-time setup
+uv sync                                    # Install dependencies
+source .venv/bin/activate                  # Per session
+python run_analysis.py ~/gutenberg_texts  # Assumes location of a (likely partial) gutenberg mirror
 ```
 
 **Debug sentence detection with state transitions:**
