@@ -1,43 +1,74 @@
-# Seams - Lightning-fast detection of natural breaks in narrative text
+# Seams - Lightning-fast detection of natural breaks in dialog-heavy narrative text
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-brightgreen.svg)](https://opensource.org/licenses/MIT)
 
-Splits large text corpora into meaningful sentences while preserving narrative flow and dialog structure.
+Splits large English text corpora into meaningful sentences while preserving narrative flow and dialog structure.
 
 
 
 ## Narrative Sentence Splitting 
 
-See [examples](docs/examples.md) demonstrating:
+SEAMS excels at preserving narrative structure where other tools break dialog incorrectly:
+
+**Input text:**
+```
+He asked me to bring a lamp into his study, and went out. I
+glanced at mother.
+
+"What does father want to go to work for so late?" said I. "Why don't
+he sit and smoke his pipe as usual?"
+```
+
+**SEAMS output (3 sentences):**
+1. `He asked me to bring a lamp into his study, and went out.`
+2. `I glanced at mother.`
+3. `"What does father want to go to work for so late?" said I. "Why don't he sit and smoke his pipe as usual?"`
+
+**Other tools break this into 4-5 fragments:**
+- Split dialog attribution (`said I.` becomes separate sentence)
+- Break mid-dialog on line breaks (`"Why don't\nhe sit...` splits incorrectly)
+- Fragment single-letter sentences (`I` alone)
+
+See [examples](docs/examples.md) for more cases demonstrating:
 - **Dialog spanning paragraph separators** - Dialog attribution stays connected across paragraph breaks
 - **Paragraph separators indicating end of never-closed quote** - Letter format with implicit quote boundaries
 
-## Benchmarks
+## Help break SEAMS!
 
-- 💻 System: Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.39
-- 🧠 Memory: 31.26 GB
-- 📁 Files: 20440 from a local Project Gutenberg mirror
+**Found a mis-split in English narrative? Show us!**
+
+No currently known mis-splits on 20K Project Gutenberg English texts. Python scripts in `exploration/` help search for potential examples.
+
+If you discover a counter-example:
+
+1. Grab the smallest passage that triggers the error
+2. Paste it into a new GitHub issue
+3. We'll reproduce it, fix it, and add the case to the public test corpus
+
+Dialog-heavy text is where other sentence splitters fail - show us where SEAMS does too.
+
+## Benchmarks
 
 | Benchmark (version) | Cores | End-to-end time | Speed-up vs nupunkt | Sentences / s | Sentence detection throughput | Total e2e throughput | Note |
 |---------------------|:----:|---------------:|--------------------:|--------------:|-----------------------------:|--------------------:|------|
-| **seams (0.1.0)** | 32 | **6 s** | **59 ×** | **8.3 M** | 134.5 MB/s | **1235.2 MB/s** | line offsets included |
-| seams [single-cpu] | 1 | 1 m 27 s | 4 × | 585 k | **543.4 MB/s** | 93.9 MB/s | single-CPU baseline |
-| nupunkt (0.5.1) | 1 | 6 m 5 s | 1 × | 188 k | 20.3 MB/s | 20.2 MB/s | pure-Python |
+| **seams** | 32 | **6 s** | **59 ×** | **8.6 M** | 105.4 MB/s | **1176.2 MB/s** | line offsets included |
+| seams-single-cpu | 1 | 1 m 31 s | 4 × | 611 k | **450.6 MB/s** | 90.4 MB/s | single-CPU baseline |
+| nupunkt (0.5.1) | 1 | 6 m 23 s | 1 × | 179 k | 19.7 MB/s | 19.3 MB/s | pure-Python |
+
+For complete benchmark methodology and additional comparisons, see [benchmarks/](benchmarks/) and run `python run_analysis.py`.
 
 ## Quick Start
 
 ### Installation
 
-```bash
-cargo install seams
-```
-
 **From source:**
 ```bash
-git clone https://github.com/knowseams/knowseams.git
-cd knowseams
+git clone <repository-url>
+cd guten_split
 cargo install --path .
 ```
+
+*Note: This crate is not yet published to crates.io*
 
 ### Basic Usage
 
@@ -49,37 +80,43 @@ seams /path/to/gutenberg_texts
 The tool will:
 - Find all `*-0.txt` files recursively
 - Extract sentences with boundary detection
-- Write results to `*_seams.txt` files alongside originals
+- Write results to `*_seams2.txt` files alongside originals
 - Generate processing statistics in `run_stats.json`
 
 ## Usage Examples
-
-### Common Scenarios
 
 **Process a Project Gutenberg mirror:**
 ```bash
 seams ~/gutenberg_mirror
 ```
 
-**Overwrite existing results:**
+**Reprocess all files (ignore existing _seams2.txt outputs):**
 ```bash
 seams --overwrite-all ~/gutenberg_texts
 ```
 
-
-**Batch processing with statistics:**
+**Single-threaded benchmark:**
 ```bash
-seams --stats-out batch_results.json ~/large_corpus
+seams --max-cpus 1 ~/test_corpus
 ```
 
-**Debug mode with detailed progress:**
+**Debug sentence detection with state transitions:**
 ```bash
-seams --fail-fast ~/test_corpus
+seams --debug-text 'He said "Hello world!" and left. She replied "Goodbye!" quickly.'
+```
+
+Output shows internal state machine transitions:
+```
+0	He said "Hello world!" and left.	(1,1,1,34)	Narrative	DialogDoubleQuote	Continue	 "	IndependentDialog[0]	He said "Hello worl
+0	He said "Hello world!" and left.	(1,1,1,34)	DialogDoubleQuote	Narrative	Continue	!" a	DialogUnpunctuatedSoftEnd	llo world!" and left. S
+1	She replied "Goodbye!" quickly.	(1,35,1,67)	Narrative	Narrative	Split	. S	NarrativeSentenceBoundary	" and left. She replied
+1	She replied "Goodbye!" quickly.	(1,35,1,67)	Narrative	DialogDoubleQuote	Continue	 "	IndependentDialog[0]	he replied "Goodbye!"
+1	She replied "Goodbye!" quickly.	(1,35,1,67)	DialogDoubleQuote	Narrative	Continue	!" q	DialogUnpunctuatedSoftEnd	 "Goodbye!" quickly.
 ```
 
 ### Output Format
 
-For each input file `book-0.txt`, seams creates `book-0_seams.txt` with:
+For each input file `book-0.txt`, seams creates `book-0_seams2.txt` with:
 ```
 1	This is the first sentence.	(1,1,1,32)
 2	Here is the second sentence.	(1,33,2,15)
@@ -93,56 +130,51 @@ Format: `index<TAB>sentence<TAB>(start_line,start_col,end_line,end_col)`
 ### Command Reference
 
 ```
-seams [OPTIONS] <ROOT_DIR>
+seams [OPTIONS] [PATH]
 
 Arguments:
-  <ROOT_DIR>  Root directory to scan for *-0.txt files
+  [PATH]  Directory to scan recursively for *-0.txt files, or single *-0.txt file to process
 
 Options:
-      --overwrite-all                   Overwrite even complete aux files
-      --fail-fast                       Abort on first error
-      --no-progress                     Suppress console progress bars
-      --stats-out <STATS_OUT>           Stats output file path [default: run_stats.json]
-      --clear-restart-log               Clear the restart log before processing
+      --overwrite-all                   Reprocess all files, even those with complete _seams.txt files
+      --fail-fast                       Stop processing immediately on first I/O, UTF-8, or detection error
+      --no-progress                     Disable progress bars (useful for automation/CI)
+  -q, --quiet                           Suppress all non-error output (implies --no-progress)
+      --stats-out <FILE>                Write performance statistics to JSON file [default: run_stats.json]
+      --clear-restart-log               Clear the restart log and reprocess all files
+      --max-cpus <MAX_CPUS>             Limit processing to specified number of CPUs/threads
+      --sentence-length-stats           Calculate and display sentence length statistics
+      --debug-seams                     Generate debug TSV files with state transition details
+      --debug-text <DEBUG_TEXT>         Debug sentence detection on provided text string
+      --debug-stdin                     Debug sentence detection on text from stdin
   -h, --help                            Print help
   -V, --version                         Print version
 ```
 
 ## Performance
 
-- **End-to-end throughput:** ≥50 MB/s sustained (includes all processing: reading, boundary detection, span tracking, and writing output)
-- **Parallel processing:** Uses up to half the CPU cores each for file enumeration and sentence splitting (no core affinity)
+- **End-to-end throughput:** 1176 MB/s multi-threaded (complete pipeline: file discovery, reading, boundary detection, span tracking, normalization, and writing output)
+- **Sentence detection:** 451 MB/s single-threaded (pure boundary detection + line coordinate tracking)
+- **Single-threaded end-to-end:** 90 MB/s (baseline for fair comparison)
+- **Parallel processing:** Uses available CPU cores for file enumeration and sentence splitting
 - **Memory efficiency:** Memory-mapped files for large corpora
 - **Incremental:** Skip already-processed files automatically
 
-Performance is primarily I/O bound rather than CPU bound. Actual throughput varies by:
+Performance scales with available CPU cores and I/O bandwidth. Actual throughput varies by:
 - **Hardware:** CPU cores, storage speed, memory bandwidth
 - **File characteristics:** Size distribution, text complexity
 - **Workload:** Complete pipeline vs. raw boundary detection only
 
-The ≥50 MB/s target represents real-world usable throughput including all processing steps, not just the raw sentence boundary detection which is significantly faster but not representative of actual usage.
-
-## For Developers
-
-**Prerequisites:** Rust 1.88.0+ (see rust-toolchain.toml)
-
-**Quick start:**
-```bash
-cargo build --release
-cargo test
-```
-
-For detailed development setup, contribution guidelines, and architecture documentation, see [CLAUDE.md](CLAUDE.md).
 
 ## Technical Details
 
 **Algorithm:** DFA-based boundary detection using regex-automata with narrative-aware heuristics for dialog coalescing.
 
-**Performance:** <TBD - comparative benchmark vs. NLTK, spaCy, standard sentence splitters>
+**Performance:** 23× faster than nupunkt single-threaded (451 MB/s vs 20 MB/s sentence detection). Multi-threaded end-to-end throughput reaches 1176 MB/s on test system.
 
 **Architecture:** Two-stage pipeline with bounded parallelism (file enumeration + sentence splitting), async I/O with memory-mapped files.
 
-For detailed technical documentation, see [docs/architecture.md](docs/architecture.md).
+For detailed design documentation, see [SEAMS-Design.md](SEAMS-Design.md).
 
 ## License
 
@@ -150,4 +182,4 @@ MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
-Built for Project Gutenberg corpus processing. Designed as a Rust learning resource demonstrating high-performance text processing patterns.
+Thanks to Project Gutenberg for providing the freely available corpus used for testing and benchmarking.
