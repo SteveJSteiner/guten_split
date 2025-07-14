@@ -22,7 +22,8 @@
   - Modify `detect_sentences_internal` to detect initial state from first character
   - Add helper function to determine initial dialog state from text prefix
   - Update state machine logic to handle dialog-starting text correctly
-  - Add unit tests for various dialog-starting scenarios
+  - **Implement whitespace requirement for dialog detection** (see docs/design/DIALOG-OPEN-WHITESPACE-REQUIREMENT.md)
+  - Add unit tests for various dialog-starting scenarios including apostrophe edge cases
   - Verify debug output shows proper state transitions for dialog-starting text
 
 * **References:**

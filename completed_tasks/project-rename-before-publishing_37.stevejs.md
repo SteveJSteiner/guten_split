@@ -35,7 +35,7 @@
 ## COMPLETION NOTES
 **Date:** 2025-07-06
 **New Name:** `seams`
-**Reason:** Strategic brand positioning for technical library + future knowseams educational platform (see naming/ directory)
+**Reason:** (see naming/ directory)
 
 **Changes Made:**
 - Cargo.toml package name: rs-sft-sentences → seams
