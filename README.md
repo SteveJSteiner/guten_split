@@ -48,13 +48,18 @@ Dialog-heavy text is where other sentence splitters fail - show us where SEAMS d
 
 ## Benchmarks
 
+**Test Corpus:** 20,440 Project Gutenberg files (7.4 billion characters, 56 million sentences)  
+**Test System:** Intel i9-13900KF (16 cores, 32 threads) running Linux 5.15 WSL2, 32GB RAM
+
 | Benchmark (version) | Cores | End-to-end time | Speed-up vs nupunkt | Sentences / s | Sentence detection throughput | Total e2e throughput | Note |
 |---------------------|:----:|---------------:|--------------------:|--------------:|-----------------------------:|--------------------:|------|
 | **seams** | 32 | **6 s** | **59 ×** | **8.6 M** | 105.4 MB/s | **1176.2 MB/s** | line offsets included |
 | seams-single-cpu | 1 | 1 m 31 s | 4 × | 611 k | **450.6 MB/s** | 90.4 MB/s | single-CPU baseline |
 | nupunkt (0.5.1) | 1 | 6 m 23 s | 1 × | 179 k | 19.7 MB/s | 19.3 MB/s | pure-Python |
 
-For complete benchmark methodology and additional comparisons, see [benchmarks/](benchmarks/) and run `python run_analysis.py`.
+**Additional Results:** See [benchmarks/performance-results.md](benchmarks/performance-results.md) for results across different systems including macOS ARM64.
+
+For complete benchmark methodology and comparison tools, see [benchmarks/](benchmarks/) and run `python run_comparison.py`.
 
 ## Quick Start
 
