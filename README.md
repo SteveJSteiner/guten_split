@@ -12,22 +12,21 @@ SEAMS excels at preserving narrative structure where other tools break dialog in
 
 **Input text:**
 ```
-He asked me to bring a lamp into his study, and went out. I
-glanced at mother.
+"Well, you can see him easily enough," said Mr. Hoad. "He's staying in
+your village, I believe. He's a nephew of Squire Broderick's."
 
-"What does father want to go to work for so late?" said I. "Why don't
-he sit and smoke his pipe as usual?"
+"What! Captain Forrester?" cried I.
 ```
 
 **SEAMS output (3 sentences):**
-1. `He asked me to bring a lamp into his study, and went out.`
-2. `I glanced at mother.`
-3. `"What does father want to go to work for so late?" said I. "Why don't he sit and smoke his pipe as usual?"`
+1. `"Well, you can see him easily enough," said Mr. Hoad.`
+2. `"He's staying in your village, I believe. He's a nephew of Squire Broderick's."`
+3. `"What! Captain Forrester?" cried I.`
 
-**Other tools break this into 4-5 fragments:**
-- Split dialog attribution (`said I.` becomes separate sentence)
-- Break mid-dialog on line breaks (`"Why don't\nhe sit...` splits incorrectly)
-- Fragment single-letter sentences (`I` alone)
+**Other tools break this into 6+ fragments:**
+- **pysbd**: Breaks mid-dialog (`"He's staying in` + `your village, I believe.`)
+- **nupunkt**: Splits attribution (`"What!"` + `Captain Forrester?"` + `cried I.`)
+- Both fragment quotes and lose dialog structure across paragraph breaks
 
 See [examples](docs/examples.md) for more cases demonstrating:
 - **Dialog spanning paragraph separators** - Dialog attribution stays connected across paragraph breaks
