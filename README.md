@@ -116,10 +116,10 @@ seams --debug-text 'He said "Hello world!" and left. She replied "Goodbye!" quic
 Output shows internal state machine transitions:
 ```
 0	He said "Hello world!" and left.	(1,1,1,34)	Narrative	DialogDoubleQuote	Continue	 "	IndependentDialog[0]	He said "Hello worl
-0	He said "Hello world!" and left.	(1,1,1,34)	DialogDoubleQuote	Narrative	Continue	!" a	DialogUnpunctuatedSoftEnd	llo world!" and left. S
+0	He said "Hello world!" and left.	(1,1,1,34)	DialogDoubleQuote	Narrative	Continue	!" a	DialogSoftEnd	llo world!" and left. S
 1	She replied "Goodbye!" quickly.	(1,35,1,67)	Narrative	Narrative	Split	. S	NarrativeSentenceBoundary	" and left. She replied
 1	She replied "Goodbye!" quickly.	(1,35,1,67)	Narrative	DialogDoubleQuote	Continue	 "	IndependentDialog[0]	he replied "Goodbye!"
-1	She replied "Goodbye!" quickly.	(1,35,1,67)	DialogDoubleQuote	Narrative	Continue	!" q	DialogUnpunctuatedSoftEnd	 "Goodbye!" quickly.
+1	She replied "Goodbye!" quickly.	(1,35,1,67)	DialogDoubleQuote	Narrative	Continue	!" q	DialogSoftEnd	 "Goodbye!" quickly.
 ```
 
 ### Output Format

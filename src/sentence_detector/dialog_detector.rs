@@ -240,16 +240,49 @@ impl DialogStateMachine {
                 26 => "HardSepEOF".to_string(),
                 _ => format!("Unknown[{pattern_id}]"),
             },
-            _ => match pattern_id {
+            DialogState::DialogDoubleQuote => match pattern_id {
+                0 => "HardSepDialogStart".to_string(),
+                1 => "HardSepNarrativeStart".to_string(),
+                2 => "HardSepEOF".to_string(),
+                3 => "DialogToDialogHard".to_string(),
+                4 => "DialogToDialogSoft".to_string(),
+                5 => "DialogHardEnd".to_string(),
+                6 => "DialogSoftEnd".to_string(),
+                7 => "DialogContinuationBefore".to_string(),
+                8 => "DialogContinuationAfter".to_string(),
+                9 => "DialogUnpunctuatedHardEnd".to_string(),
+                10 => "DialogUnpunctuatedSoftEnd".to_string(),
+                _ => format!("Unknown[{pattern_id}]"),
+            },
+            DialogState::DialogSingleQuote |
+            DialogState::DialogSmartDoubleOpen |
+            DialogState::DialogSmartSingleOpen |
+            DialogState::DialogParenthheticalSquare |
+            DialogState::DialogParenthheticalCurly => match pattern_id {
                 0 => "HardSepDialogStart".to_string(),
                 1 => "HardSepNarrativeStart".to_string(),
                 2 => "HardSepEOF".to_string(),
                 3 => "DialogHardEnd".to_string(),
                 4 => "DialogSoftEnd".to_string(),
-                5 => "DialogUnpunctuatedHardEnd".to_string(),
-                6 => "DialogUnpunctuatedSoftEnd".to_string(),
+                5 => "DialogContinuationBefore".to_string(),
+                6 => "DialogContinuationAfter".to_string(),
+                7 => "DialogUnpunctuatedHardEnd".to_string(),
+                8 => "DialogUnpunctuatedSoftEnd".to_string(),
                 _ => format!("Unknown[{pattern_id}]"),
-            }
+            },
+            DialogState::DialogParenthheticalRound => match pattern_id {
+                0 => "HardSepDialogStart".to_string(),
+                1 => "HardSepNarrativeStart".to_string(),
+                2 => "HardSepEOF".to_string(),
+                3 => "DialogHardEnd".to_string(),
+                4 => "DialogSoftEnd".to_string(),
+                5 => "DialogContinuationBefore".to_string(),
+                6 => "DialogNonSentencePunct".to_string(),
+                7 => "DialogUnpunctuatedHardEnd".to_string(),
+                8 => "DialogUnpunctuatedSoftEnd".to_string(),
+                _ => format!("Unknown[{pattern_id}]"),
+            },
+            DialogState::Unknown => format!("UnknownState[{pattern_id}]"),
         }
     }
     
